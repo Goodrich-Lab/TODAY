@@ -2,7 +2,8 @@
 
 # home directory for project
 dir_home <- here::here() %>% 
-  dirname() %>% dirname()
+  dirname() %>% 
+  dirname()
 
 
 # data folder 

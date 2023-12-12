@@ -1,0 +1,56 @@
+---
+title: 'Example Project'
+subtitle: "Correlation plot"
+author: "Hongxu Wang"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: hide
+---
+
+
+```{r correlation setup, include=FALSE, echo=FALSE}
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE)
+source(here::here("!libraries.R"))
+source(here::here("!directories.R"))
+source(here::here("!load_cleaned_data.R"))
+```
+
+## Correlation plot
+```{r correlation plot, echo = TRUE, fig.width=8, fig.height=8}
+# covariates
+covars <- c("race_binary", 
+            "smoke_0", 
+            "age_0", 
+            "sex", 
+            "parents_income_0")
+
+# categorical outcomes(two categories or more)
+cat_outcomes <- c("nafld_di_0","dyslipid_di_0","nafld_nash_mul_0","steatgrd_mul_0", "bhepa_0")
+
+# continuous outcomes
+cont_outcomes <- c("alt_0", "ast_0")
+
+# clean the name of the columns
+data1<- data %>% 
+  rename_all(~str_replace_all(., "_untargeted_plasma_0_imputed", ""))
+
+# extract plasma pfas name
+plasma_pfas1 <- setdiff(colnames(data1), c(covars, cat_outcomes, cont_outcomes , "key"))
+
+# exposure data
+
+corr <- cor(data1 %>% dplyr::select(all_of(plasma_pfas1)), use = "complete.obs", method = "spearman") # if data contains na can use = "complete.obs" can handle it.
+
+corrplot(corr, type="lower",
+         col=brewer.pal(n=8, name="Blues"),
+         title = "",
+         method = "color",
+         addCoef.col = "black",
+         tl.cex=1.5, number.cex=1.2)
+```

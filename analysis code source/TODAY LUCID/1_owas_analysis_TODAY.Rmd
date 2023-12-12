@@ -1,0 +1,144 @@
+---
+title: 'SOLAR LUCID ViCTER'
+subtitle: ""
+author: "Hongxu Wang"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: hide
+---
+
+```{css, echo=FALSE}
+pre {
+max-height: 200px;
+overflow-: auto;
+}
+
+```
+
+
+```{r setup, include=FALSE, echo=FALSE}
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE)
+source(here::here("!libraries.R"))
+source(here::here("!directories.R"))
+source(here::here("!load_clean_data.R"))
+
+
+if(str_detect(here::here(), "jagoodri")){
+  #Jesse 
+  dir_data_solar <- fs::path(here::here() %>% 
+                               dirname() %>% dirname() %>% dirname() %>% 
+                               dirname() %>% dirname(), 
+                             "Chatzi Projects (Active)",
+                             "Env Chem SOL-CHS",
+                             "Analysis",
+                             "1_analysis_ready_data")
+  
+} else{
+  # Hongxu
+  dir_data_solar <- fs::path(here::here() %>% 
+                               dirname() %>% dirname(), 
+                             "Chatzi Projects (Active)",
+                             "Env Chem SOL-CHS",
+                             "Analysis",
+                             "1_analysis_ready_data")
+  
+}
+
+
+```
+
+## Prepare data for analysis
+
+
+## MWAS analysis 
+**This is to reduce the dimension of metabolomics data**
+```{r mwas}
+# exposure <- c("pfas_pfos",
+#               "pfas_pfoa",
+#               "pfas_pfhxs",
+#               "pfas_pfna",
+#               "pfas_pfda",
+#               "pfas_nmefosaa",
+#               "pfas_pfhps",
+#               "pfas_pfhpa",
+#               "pfas_pfuna")
+# 
+# outcome <-  c("time_to_glyc_scld",
+#               "codi",
+#               "si_1_ins0",
+#               "hb_a1c")
+# met_name <- colnames(full_data)[str_detect(colnames(full_data), "met_")]
+# pro_name <- colnames(full_data)[str_detect(colnames(full_data), "seq.")]
+# 
+# # QGcomp
+# owas_qgcomp_res <- epiomics::owas_qgcomp(df = full_data,
+#                                          expnms = exposure,
+#                                          omics = c(met_name, pro_name),
+#                                          q = 3,
+#                                          covars = c("case1_control0",
+#                                                     "dxtime",
+#                                                     "agebase"),
+#                                          confidence_level = 0.95)
+# saveRDS(owas_qgcomp_res,
+#         file = fs::path(dir_results,
+#                         "OWAS_qgcomp_TODAY_results.RDS"))
+# 
+# # # OWAS with outcome
+# owas_res_out <- epiomics::owas(df = full_data,
+#                                var = outcome,
+#                                omics = c(met_name, pro_name),
+#                                var_exposure_or_outcome = "outcome",
+#                                family = "gaussian",
+#                                conf_int = FALSE)
+# 
+# 
+# saveRDS(owas_res_out,
+#         file = fs::path(dir_results,
+#                         "OWAS_omics_TODAY_outcome.RDS"))
+```
+
+## Select top significant metabolites
+```{r selecting top sig feature}
+# Meet in Middle
+owas_qgcomp_res <- readRDS(file = fs::path(dir_results,
+                                           "OWAS_qgcomp_TODAY_results.RDS")) |>
+  as_tibble()
+
+owas_res_out <- readRDS(file = fs::path(dir_results,
+                                        "OWAS_omics_TODAY_outcome.RDS")) #|>
+  # as_tibble() |>
+  # tidylog::filter(var_name == "hb_a1c")
+
+# Meet in Middle
+mim_all <- tidylog::full_join(owas_qgcomp_res, owas_res_out,
+                              by = c("feature" = "feature_name"), 
+                              suffix = c("_GX", "_XY")) 
+
+mim_all <- mim_all |>
+  mutate(mediated_effect = as.numeric(scale(psi) * scale(estimate)), 
+         sig_both = case_when(p_value_GX < 0.3 & p_value_XY < 0.05 ~ "sig both", 
+                              p_value_GX < 0.3 | p_value_XY < 0.05 ~ "sig one", 
+                              TRUE ~ "sig neither"), 
+         class = if_else(str_detect(feature, "met"), "met", "pro"))
+
+table(mim_all$sig_both, mim_all$class, mim_all$var_name)
+hist(mim_all$mediated_effect)
+
+top_sig <- mim_all %>% 
+  arrange(abs(mediated_effect)) |>
+  tidylog::filter(sig_both == "sig both") |>
+  group_by(class) |>
+  slice_head(n = 6) |> 
+  ungroup() |>
+  dplyr::select(feature, psi, p_value_GX, estimate, p_value_XY, class, sig_both)
+
+ftr_names_reduced <- top_sig |>
+  select(feature, class)
+```
+

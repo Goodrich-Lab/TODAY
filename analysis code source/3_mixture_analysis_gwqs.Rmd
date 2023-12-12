@@ -1,0 +1,68 @@
+---
+title: 'TODAY mixture analysis ViCTER'
+subtitle: ""
+author: "Hongxu Wang"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{css, echo=FALSE}
+pre {
+max-height: 200px;
+overflow-: auto;
+}
+
+```
+
+
+```{r setup, include=FALSE, echo=FALSE}
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE)
+source(here::here("!libraries.R"))
+source(here::here("!directories.R"))
+source(here::here("!load_clean_data.R"))
+library(gWQS)
+```
+
+## Mixture Analysis --gwqs
+**Exposure: PFOS, PFOA, PFHxS, PFNA, PFDA, NMEFOSSA**
+
+**Outcome: time_to_glyc_scld**
+
+**Covars: case1_control0, sex, agebase, tx**
+
+```{r mixture analysis}
+exposure_name <- c("pfas_pfoa", "pfas_pfos", 
+                   "pfas_pfhxs", "pfas_pfna",
+                   "pfas_pfda", "pfas_nmefosaa")
+
+covars_name <- c("case1_control0", "agebase", "tx")
+
+outcome_name <- "time_to_glyc_scld"
+
+wqs_result <- gWQS::gwqs(time_to_glyc_scld ~ wqs + case1_control0 + agebase + tx,
+                         mix_name = exposure_name, 
+                         data = full_data %>%
+                           select(outcome_name,covars_name,
+                                  exposure_name),
+                         family="gaussian",
+                         seed = 1001)
+
+gwqs_scatterplot(wqs_result)
+
+View(select(full_data, all_of(c(outcome_name,covars_name,
+                                exposure_name))))
+## saving plot-----
+png(fs::path(dir_figure,
+             "gwqs_plot.png"),
+    width = 4000, height = 2000, res = 350)
+gwqs_barplot(wqs_result)
+dev.off()
+```

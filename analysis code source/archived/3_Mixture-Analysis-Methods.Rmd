@@ -1,0 +1,159 @@
+---
+title: 'Example Project'
+subtitle: "Mixture analysis"
+author: "Hongxu Wang"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: hide
+---
+
+```{css, echo=FALSE}
+pre {
+  max-height: 200px;
+  overflow-: auto;
+}
+
+```
+
+
+```{r mixture analysis setup, include=FALSE, echo=FALSE}
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE)
+source(here::here("!libraries.R"))
+source(here::here("!directories.R"))
+source(here::here("!load_cleaned_data.R"))
+source(here::here("g_prior_sel_logistic_function.R"))
+```
+
+## Mixture Analysis Overview
+This part contains two common method used in our lab to do analyze the effects of exposure mixtures.
+
+1) qgcomp package in R
+2) g-prior function from Dave's Lab
+
+## Mixture analysis using qgcomp package
+binary nafld outcome ~ all plasma pfas + covars
+```{r qgcomp, echo=TRUE}
+## Step1. Define variables----
+# covariates
+covars <- c("race_binary", 
+            "smoke_0", 
+            "age_0", 
+            "sex", 
+            "parents_income_0")
+
+# plasma pfas
+plasma_pfas <- colnames(data)[grepl("imputed",colnames(data))]
+## or
+# plasma_pfas <- c("pfda_untargeted_plasma_0_imputed",
+#                  "pf_hx_s_untargeted_plasma_0_imputed",
+#                  "pf_hp_s_untargeted_plasma_0_imputed",
+#                  "pfna_untargeted_plasma_0_imputed",
+#                  "pfoa_untargeted_plasma_0_imputed",
+#                  "pfos_untargeted_plasma_0_imputed")
+
+## Step2. Mixture analysis using qgcomp()
+
+#### qgcomp-----
+qgcomp_output <- qgcomp.noboot(as.formula(paste("nafld_di_0~",
+                                                str_c(plasma_pfas, collapse = "+") ,
+                                                "+",
+                                                str_c(covars, collapse = "+"))), # Covariates - same as MLR model
+                               expnms=plasma_pfas, # Name of Mixtures
+                               data=data,
+                               family=binomial(), # family=binomial() for logistic
+                               q = 3)
+
+## Step3. View Models --------------
+
+### weighted plot----
+
+plot(qgcomp_output, cex = 1)
+
+### saving plot-----
+# png(fs::path(dir_figure,
+#              "3_weighted_plot_gcomp_nafld.png"),
+#     width = 4000, height = 2000, res = 350)
+# plot(qgcomp_output)
+# dev.off()
+
+
+### coefficient plot----
+coef <- data.frame(qgcomp_output$fit$coefficients) %>% 
+  rownames_to_column("Predictor") %>%
+  filter(grepl("targeted_plasma", Predictor)) %>%
+  rename('Log Odds Ratio' = qgcomp_output.fit.coefficients) %>%
+  mutate(direction = ifelse(`Log Odds Ratio` > 0, "pos", "neg"),
+         direction = factor(direction, levels = c("pos", "neg")))
+
+# change the name of the predictor
+coef1 <- coef %>% mutate(Predictor = case_when(
+  grepl("pfda", Predictor) ~ "PFDA",
+  grepl("pfos", Predictor) ~ "PFOS",
+  grepl("pfna", Predictor) ~ "PFNA",
+  grepl("pf_hx_s", Predictor) ~"PFHxS",
+  grepl("pfoa", Predictor) ~ "PFOA",
+  grepl("pf_hp_s", Predictor) ~ "PFHpS"
+))
+
+p <- ggplot(coef1,aes(Predictor, `Log Odds Ratio`,
+                      fill = direction)) + 
+  geom_bar(stat = "identity", show.legend = FALSE) + 
+  ggtitle("Coefficient plot(Mixture Analysis)") +
+  coord_flip() +
+  geom_hline(yintercept = 0, linetype = 2, color = "black") +
+  geom_text(aes(label = round(`Log Odds Ratio`,2)), hjust= -0.05) +
+  theme(axis.text = element_text(size = 15),
+        text = element_text(size = 15),
+        axis.title.y = element_blank())
+
+p
+### saving coefficient plot----
+# ggsave(p, 
+#        filename = fs::path(dir_figure,
+#                            "3_coef_plot_qgcomp.jpeg"),
+#        width = 7,
+#        height = 4)
+```
+
+## Mixture analysis using g-prior
+
+```{r g-prior, echo=TRUE}
+
+data_analysis <- data %>% drop_na(nafld_di_0,
+                         all_of(plasma_pfas)) %>%
+  mutate(nafld = ifelse(nafld_di_0 == "NAFLD", 1, 0))
+
+X <- data_analysis %>% dplyr::select(plasma_pfas) %>% scale()
+
+Y <- data_analysis$nafld
+
+U <- data_analysis %>% dplyr::select(all_of(covars)) %>%
+  sapply(function(x) ifelse(is.na(x),NaN,x)) %>%
+  fastDummies::dummy_cols(remove_selected_columns = TRUE,
+                          remove_first_dummy = TRUE)
+
+result <- g.prior.sel.logistic(X, Y, U)
+
+gprior_result <- result %>%
+  janitor::clean_names() %>%
+  mutate(odds_ratio = exp(mean), 
+         odds_ratio_lcl = exp(x2_5),
+         odds_ratio_ucl = exp(x97_5)) %>% 
+  rename(log_odds = mean, 
+         conf_low  = x2_5,
+         conf_high = x97_5) %>% 
+  remove_rownames() %>% 
+  mutate(odds_ci = effest_ci(eff_est = odds_ratio,
+                             odds_ratio_lcl,
+                             odds_ratio_ucl))
+gprior_result
+
+write_csv(gprior_result, fs::path(dir_report,
+                                        "gprior_result.csv"))
+```

@@ -1,0 +1,241 @@
+---
+title: 'SOLAR LUCID ViCTER'
+subtitle: ""
+author: "Hongxu Wang"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{css, echo=FALSE}
+pre {
+max-height: 200px;
+overflow-: auto;
+}
+
+```
+
+
+```{r setup, include=FALSE, echo=FALSE}
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE)
+library(LUCIDus)
+source(here::here("!libraries.R"))
+source(here::here("!directories.R"))
+source(here::here("!load_clean_data.R"))
+library(networkD3)
+source(here::here("SOLAR LUCID", "Sankey function.R"))
+
+met_name_reduce <- ftr_names_reduced$feature[ftr_names_reduced$class=="met"]
+pro_name_reduce <- ftr_names_reduced$feature[ftr_names_reduced$class=="pro"]
+
+exposure <- c("pfas_pfos",
+              "pfas_pfoa",
+              "pfas_pfhxs",
+              "pfas_pfna",
+              "pfas_pfda",
+              "pfas_nmefosaa",
+              "pfas_pfhps",
+              "pfas_pfhpa",
+              "pfas_pfuna")
+
+outcome <-  c(#"time_to_glyc_scld"
+              # "codi",
+              # "si_1_ins0",
+              "hb_a1c"
+              )
+met_name <- colnames(full_data)[str_detect(colnames(full_data), "met_")]
+met_name_reduce <- met_name[met_name %in% ftr_names_reduced$feature]
+pro_name <- colnames(full_data)[str_detect(colnames(full_data), "seq.")]
+
+data_analysis <- full_data %>% 
+  dplyr::select(sample_id, 
+                all_of(exposure), 
+                all_of(outcome),
+                all_of(ftr_names_reduced$feature)) 
+## rename protein
+linking <- read_csv(fs::path(dir_data, 
+                             "raw_data",
+                             "protein_analytes.csv")) %>% select(AptName, Target) %>% 
+  filter(AptName%in%
+           ftr_names_reduced$feature[grepl("seq",ftr_names_reduced$feature)])
+ 
+data_analysis <- data_analysis %>% 
+  data.table::setnames(old = linking$AptName,
+           new = linking$Target)
+
+```
+
+## Principal component analysis
+```{r pca}
+pca <- prcomp(data_analysis %>% select(all_of(exposure)), 
+              center = TRUE, 
+              scale. = TRUE)
+
+pc1 <- data.frame(pca$x) 
+factoextra::fviz_screeplot(pca)
+factoextra::fviz_pca(pca)
+```
+
+## Lucid model by including metabolomics and proteomics in parallel
+
+```{r lucid in parallel}
+# G = data_analysis %>%
+#   select(all_of(exposure)) %>%
+#   as.matrix() |> log2() |> scale()
+
+G = pc1[,2] #%>% select(PC2) %>% rename(PFAS = PC2) %>% as.matrix()
+
+# Z =  list(metabolome = data_analysis %>%
+#             select(sample_id, all_of(met_name_reduce)) %>%
+#             column_to_rownames("sample_id") %>%
+#             as.matrix() |> scale() ,
+#           proteome = data_analysis %>%
+#             select(sample_id, all_of(pro_name_reduce)) %>%
+#             column_to_rownames("sample_id") %>%
+#             as.matrix() |> scale() )
+
+Z =  data_analysis %>%
+            select(sample_id, all_of(c(met_name_reduce, linking$Target))) %>%
+            column_to_rownames("sample_id") %>%
+            as.matrix() |> scale()
+
+
+Y = data_analysis %>% 
+  dplyr::select(all_of(outcome[1])) %>% 
+  unlist() %>%
+  as.numeric() |> 
+  scale()  
+
+# fit <- LUCIDusM::est_lucid(
+#   G = G, 
+#   Z = Z, 
+#   # Y = as.numeric(as.factor(Y$decile_alt)),
+#   Y = scale(Y) |> as.numeric(),
+#   K = rep(2, length(Z)), 
+#   family = "gaussian", 
+#   max_itr = 200, 
+#   useY = TRUE, 
+#   modelNames =  rep("VEI", 2))
+
+# plot_lucidM(fit, sankey_colors = sankey_colors) #, 
+
+fit <- LUCIDus::est_lucid(
+  G = G, 
+  Z = Z, 
+  # CoG = full_data$case1_control0,
+  # CoY = full_data$case1_control0,
+  # Y = scale(log(full_data$case1_control0)) |> as.numeric(),
+  Y = full_data$case1_control0,
+  K = 2, 
+  family = "binary", 
+  max_itr = 200, 
+  useY = FALSE)
+
+
+(p <- plot_lucid(fit, fontsize  = 14, Y_color = "red"))
+
+
+# Betas G/E --> X
+fit$res_Beta$Beta
+
+# Mu X --> Z
+fit$res_Mu_Sigma$Mu[1]
+
+# Mu X --> Y
+fit$res_Delta$Delta$mu
+
+htmlwidgets::saveWidget(p, fs::path(dir_figure,"lucid_in_parellel.html"))
+p
+```
+
+
+
+# Plot
+```{r}
+# fit_new <- reorder_lucidM(lucidus_fit = fit, reference = c(2, 1))
+# plot_lucidM(fit_new, sankey_colors = sankey_colors) #, 
+# 
+# 
+# # Colors ----
+# col_pal <- RColorBrewer::brewer.pal(n = 8, name = "Dark2")
+# 
+# # Color pallet for sankey
+# sankey_colors <- matrix(c("exposure", col_pal[6],
+#                           "lc1",      col_pal[1],
+#                           "lc2",      col_pal[3],
+#                           "lc3",      col_pal[3],
+#                           "lc4",      col_pal[4],
+#                           "layer1",   col_pal[1],
+#                           "layer2",   col_pal[3],
+#                           "layer3",   col_pal[3],
+#                           "layer4",   col_pal[4],
+#                           "outcome",  col_pal[8],
+#                           "TRUE",     "#e69138", # Blue
+#                           "FALSE",    "#d9d2e9", # Light grey
+#                           "pos_clus_to_out", "red", 
+#                           "neg_clus_to_out", "#96c96c"), 
+#                         byrow = TRUE, nrow = 14) |> 
+#   as_tibble() |>
+#   rename("domain" = V1, 
+#          "range"  = V2)
+# 
+# 
+# # Plot
+# plot_lucidM(fit_new, sankey_colors = sankey_colors, text_size = 0) #
+
+```
+
+## Omics profiles for each cluster predicted by LUCID
+```{r}
+M_mean = as.data.frame(fit$pars$mu)
+# g_mean = as.data.frame(fit$pars$beta)
+# M_mean <- bind_cols(M_mean, g_mean) |> select(-intercept)
+M_mean$cluster = as.factor(1:2)
+M_mean_melt = reshape::melt(M_mean, id.vars = "cluster") 
+M_mean_melt <- M_mean_melt %>% 
+  mutate(cluster = ifelse(cluster == 2, "High Risk", "Low Risk"))
+# add color label for omics layer
+M_mean_melt = M_mean_melt |>
+  mutate(color_label = case_when(variable == "G1" ~ "1", 
+                                 str_detect(variable, "met_") ~ "2", 
+                                 TRUE ~ "3"))
+
+ggplot(M_mean_melt, aes(fill = color_label, y = value, x = variable)) +
+  geom_bar(position="dodge", stat="identity") +
+  ggtitle("Omics profiles for 2 latent clusters") +
+  # facet_wrap(~(cluster)) +
+  facet_grid(rows = vars(cluster)) +
+  theme(legend.position="none") +
+  geom_hline(yintercept = 0) +
+  xlab("") +
+  theme(text = element_text(size=10),
+        axis.text.x = element_text(angle = 45, vjust = 1,
+                                   hjust = 1),
+        plot.margin = margin(10, 10, 10, 80)) +
+  scale_fill_manual(values = c("#2fa4da", "#A77E69"))
+  
+
+ggsave(filename = fs::path(dir_figure,
+                           "Histogram.png"),
+       width = 10, height = 6, dpi = 300, bg = "white")
+
+
+KRT20
+ATG3
+GAS2
+DHRS3
+PSD
+CEAM7
+
+CEACAM7      
+
+
+```
+

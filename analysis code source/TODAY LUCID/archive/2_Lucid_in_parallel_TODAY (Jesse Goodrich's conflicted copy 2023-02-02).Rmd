@@ -1,0 +1,165 @@
+---
+title: 'SOLAR LUCID ViCTER'
+subtitle: ""
+author: "Hongxu Wang"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: hide
+---
+
+```{css, echo=FALSE}
+pre {
+max-height: 200px;
+overflow-: auto;
+}
+
+```
+
+
+```{r setup, include=FALSE, echo=FALSE}
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE)
+library(LUCIDus)
+source(here::here("!libraries.R"))
+source(here::here("!directories.R"))
+library(networkD3)
+source(here::here("SOLAR LUCID", 
+                  "Sankey function.R"))
+
+met_name_reduce <- ftr_names_reduced$feature[ftr_names_reduced$class=="met"]
+pro_name_reduce <- ftr_names_reduced$feature[ftr_names_reduced$class=="pro"]
+
+exposure <- c("pfas_pfos",
+              "pfas_pfoa",
+              "pfas_pfhxs",
+              "pfas_pfna",
+              "pfas_pfda")
+              # "pfas_nmefosaa",
+              # "pfas_pfhps",
+              # "pfas_pfhpa",
+              # "pfas_pfuna")
+
+outcome <-  c(#"time_to_glyc_scld"
+              # "codi",
+              # "si_1_ins0",
+              "hb_a1c"
+              )
+met_name <- colnames(full_data)[str_detect(colnames(full_data), "met_")]
+pro_name <- colnames(full_data)[str_detect(colnames(full_data), "seq.")]
+
+data_analysis <- full_data %>% 
+  dplyr::select(sample_id, 
+                all_of(exposure), 
+                all_of(outcome),
+                all_of(ftr_names_reduced$feature)) 
+
+```
+
+## Lucid model by including metabolomics and proteomics in parallel
+
+```{r lucid in parallel}
+G = data_analysis %>% 
+  select(all_of(exposure)) %>% 
+  as.matrix() |> log2() |> scale()
+
+Z =  list(metabolome = data_analysis %>% 
+            select(sample_id, all_of(met_name_reduce)) %>% 
+            column_to_rownames("sample_id") %>%
+            as.matrix() |> scale() , 
+          proteome = data_analysis %>% 
+            select(sample_id, all_of(pro_name_reduce)) %>%
+            column_to_rownames("sample_id") %>%
+            as.matrix() |> scale() )
+
+Z =  data_analysis %>% 
+            select(sample_id, all_of(c(met_name_reduce, pro_name_reduce))) %>% 
+            column_to_rownames("sample_id") %>%
+            as.matrix() |> scale() 
+
+
+Y = data_analysis %>% 
+  dplyr::select(all_of(outcome[1])) %>% 
+  unlist() %>%
+  as.numeric() |> 
+  scale()  
+
+# fit <- LUCIDusM::est_lucid(
+#   G = G, 
+#   Z = Z, 
+#   # Y = as.numeric(as.factor(Y$decile_alt)),
+#   Y = scale(Y) |> as.numeric(),
+#   K = rep(2, length(Z)), 
+#   family = "gaussian", 
+#   max_itr = 200, 
+#   useY = TRUE, 
+#   modelNames =  rep("VEI", 2))
+
+# plot_lucidM(fit, sankey_colors = sankey_colors) #, 
+
+fit <- LUCIDus::est_lucid(
+  G = G, 
+  Z = Z, 
+  # Y = as.numeric(as.factor(Y$decile_alt)),
+  Y = scale(Y) |> as.numeric(),
+  K = 2, 
+  family = "normal", 
+  max_itr = 200, 
+  useY = TRUE)
+
+
+plot_lucid(fit, fontsize = 14)
+
+
+# Betas G/E --> X
+fit$res_Beta$Beta
+
+# Mu X --> Z
+fit$res_Mu_Sigma$Mu[1]
+
+# Mu X --> Y
+fit$res_Delta$Delta$mu
+
+```
+
+
+
+# Plot
+```{r}
+fit_new <- reorder_lucidM(lucidus_fit = fit, reference = c(2, 1))
+plot_lucidM(fit_new, sankey_colors = sankey_colors) #, 
+
+
+# Colors ----
+col_pal <- RColorBrewer::brewer.pal(n = 8, name = "Dark2")
+
+# Color pallet for sankey
+sankey_colors <- matrix(c("exposure", col_pal[6],
+                          "lc1",      col_pal[1],
+                          "lc2",      col_pal[3],
+                          "lc3",      col_pal[3],
+                          "lc4",      col_pal[4],
+                          "layer1",   col_pal[1],
+                          "layer2",   col_pal[3],
+                          "layer3",   col_pal[3],
+                          "layer4",   col_pal[4],
+                          "outcome",  col_pal[8],
+                          "TRUE",     "#e69138", # Blue
+                          "FALSE",    "#d9d2e9", # Light grey
+                          "pos_clus_to_out", "red", 
+                          "neg_clus_to_out", "#96c96c"), 
+                        byrow = TRUE, nrow = 14) |> 
+  as_tibble() |>
+  rename("domain" = V1, 
+         "range"  = V2)
+
+
+# Plot
+plot_lucidM(fit_new, sankey_colors = sankey_colors, text_size = 0) #
+
+```
+

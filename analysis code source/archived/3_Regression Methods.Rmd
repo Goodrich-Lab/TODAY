@@ -1,0 +1,307 @@
+---
+title: 'Example Project'
+subtitle: "Regression Methods"
+author: "Hongxu Wang"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: hide
+---
+
+```{css, echo=FALSE}
+pre {
+  max-height: 200px;
+  overflow-: auto;
+}
+
+```
+
+
+```{r Regression Methods setup, include=FALSE, echo=FALSE}
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE)
+source(here::here("!libraries.R"))
+source(here::here("!directories.R"))
+source(here::here("!load_cleaned_data.R"))
+```
+
+## Regression Methods
+**This part gives example code of building logistic regression, linear regression, ordinal logistic regression and multinomial logistic regression together with method of obtaining coefficient plots**
+
+**Continuous outcomes were group mean centered, exposures were log2 transformed**
+
+## Model 1. Binary Logistic Regression 
+ **binary outcome ~ plasma pfas + covars**
+```{r binary logistic regression, echo=TRUE}
+## Define variables----
+# covariates
+covars <- c("race_binary", 
+            "smoke_0", 
+            "age_0", 
+            "sex", 
+            "parents_income_0")
+
+# categorical outcomes(two categories or more)
+cat_outcomes_di <- c("nafld_di_0","dyslipid_di_0")
+
+cat_outcomes_mul <- c("nafld_nash_mul_0","steatgrd_mul_0")
+
+# continuous outcomes
+cont_outcomes <- c("alt_0", "ast_0")
+
+# plasma pfas
+plasma_pfas <- colnames(data)[grepl("imputed",colnames(data))]
+## or
+# plasma_pfas <- c("pfda_untargeted_plasma_0_imputed",
+#                  "pf_hx_s_untargeted_plasma_0_imputed",
+#                  "pf_hp_s_untargeted_plasma_0_imputed",
+#                  "pfna_untargeted_plasma_0_imputed",
+#                  "pfoa_untargeted_plasma_0_imputed",
+#                  "pfos_untargeted_plasma_0_imputed")
+
+## Model1: Logistic regression: cat_outcomes_di ~ plasma pfas + covars----
+# log2 transfored for the exposures/plasma pfas
+
+### Create regression model formula----
+eo_combinations1 <- list(
+  x = plasma_pfas,
+  y = cat_outcomes_di) %>%
+  cross_df()
+
+models1 <- eo_combinations1 %>%
+  mutate(covars = str_c(covars, collapse = "+"),
+    formula = str_c(y,"~","log2(", x,")", "+", covars))
+
+### Run logistic regression----
+models1$output <- map(models1$formula, 
+                     ~glm(as.formula(.),
+                          data = data,
+                          na.action = na.exclude,
+                          family = "binomial") %>%
+                       tidy(., conf.int = TRUE)
+  )
+
+### Create final dataframe of all results----
+mod_output_df1 <- models1 %>%
+  unnest(output) %>%
+  mutate(odds_ratio = exp(estimate),
+         exp_conf_high = exp(conf.high),
+         exp_conf_low = exp(conf.low)) %>%
+  separate(x, 
+           into = c("pfas", NA), 
+           sep = "_targeted|_untargeted",
+           remove = FALSE) %>%
+  clean_names() 
+
+### Coefficient plot-----
+mod_output_df1[grep("log2", mod_output_df1$term),] %>%
+    ggplot(aes(x = pfas,y = odds_ratio)) +
+    geom_point(size = 1) +
+    coord_flip() +
+    geom_errorbar(aes(ymin = exp_conf_low,
+                      ymax = exp_conf_high),
+                  width = 0) +
+    geom_hline(yintercept = 1, linetype = 2) +
+    ylab("Odds Ratio (95% CI)") +
+    xlab("Plasma PFAS") + 
+    ggtitle("Coefficient Plot (Binary Logistic Regression)") +
+    theme_bw() +
+    theme(text = element_text(size = 10))+
+    theme(legend.title = element_blank()) +
+    coord_flip() +
+    facet_wrap(.~ y,scales = "free_x")
+### Saving coefficient plots----
+# ggsave(fs::path(dir_figure,"1_coefficient_plot.png"),
+#        width = 7, height = 3, dpi = 300)
+```
+
+## Model 2. Ordinal Logistic Regression 
+ **ordered outcome ~ plasma pfas + covars**
+```{r ordinal logistic regression, echo=TRUE}
+### Create regression model formula----
+eo_combinations2 <- list(
+  x = plasma_pfas,
+  y = cat_outcomes_mul) %>%
+  cross_df()
+
+models2 <- eo_combinations2 %>%
+  mutate(covars = str_c(covars, collapse = "+"),
+         formula = str_c(y,"~","log2(", x,")", "+", covars))
+
+### Run ordinal logistic regression----
+models2$output <- map(models2$formula, 
+                     ~polr(as.formula(.),
+                          data = data,
+                          na.action = na.exclude,
+                          Hess = TRUE) %>%
+                       tidy(., conf.int = TRUE))
+
+### Create final data frame of all results----
+mod_output_df2 <- models2 %>%
+  unnest(output) %>%   
+  mutate(odds_ratio = exp(estimate),
+         exp_conf_high = exp(conf.high),
+         exp_conf_low = exp(conf.low)) %>%
+    separate(x, 
+           into = c("pfas", NA), 
+           sep = "_targeted|_untargeted",
+           remove = FALSE) %>%
+  clean_names() 
+
+### Coefficient plot-----
+mod_output_df2[grep("log2", mod_output_df2$term),] %>%
+    ggplot(aes(x = pfas,y = odds_ratio)) +
+    geom_point(size = 1) +
+    coord_flip() +
+    geom_errorbar(aes(ymin = exp_conf_low,
+                      ymax = exp_conf_high),
+                  width = 0) +
+    geom_hline(yintercept = 1, linetype = 2) +
+    ylab("Odds Ratio (95% CI)") +
+    xlab("Plasma PFAS") + 
+    ggtitle("Coefficient Plot (Oridinal Logistic Regression)") +
+    coord_flip() +
+    facet_wrap(.~ y,scales = "free_x")+
+    theme_bw() +
+    theme(text = element_text(size = 10))+
+    theme(legend.title = element_blank())
+    
+### Saving coefficient plots----
+# ggsave(fs::path(dir_figure,"1_coefficient_plot.png"),
+#        width = 7, height = 3, dpi = 300)
+```
+
+## Model 3. Linear regression
+**continuous outcomes ~ plasma pfas + covars**
+```{r linear regression, echo=TRUE}
+### Create regression model formula----
+eo_combinations3 <- list(
+  x = plasma_pfas,
+  y = cont_outcomes) %>%
+  cross_df()
+
+models3 <- eo_combinations3 %>%
+  mutate(covars = str_c(covars, collapse = "+"),
+    formula = str_c("scale(", y,")","~","log2(", x,")", "+", covars))
+
+### Run linear regression----
+models3$output <- map(models3$formula, 
+                      ~lm(as.formula(.),
+                            data = data,
+                            na.action = na.exclude) %>%
+                        tidy(., conf.int = TRUE)
+)
+
+### Create final data frame of all results----
+mod_output_df3 <- models3 %>%
+  unnest(output) %>%
+  separate(x, 
+           into = c("pfas", NA), 
+           sep = "_targeted|_untargeted",
+           remove = FALSE) %>%
+  clean_names() 
+### coefficient plots -----
+mod_output_df3[grep("log2", mod_output_df3$term),] %>%
+  ggplot(aes(x = pfas,y = estimate)) +
+  geom_point(size = 1) +
+  coord_flip()+
+  geom_errorbar(aes(ymin = conf_low,
+                    ymax = conf_high),
+                width = 0) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  ylab("Beta (95% CI)") +
+  xlab("Untargeted Plasma PFAS") + 
+  ggtitle("Coefficient Plots(Linear Regression)")+
+  theme_bw() +
+  theme(text = element_text(size = 10))+
+  theme(legend.title = element_blank()) +
+  coord_flip() +
+  facet_wrap(.~ y,scales = "free_x")
+  
+### saving coefficient plots-----
+# ggsave(fs::path(dir_figure,"1_coefficient_plot.png"),
+#        width = 7, height = 3, dpi = 300)
+```
+
+## Model 4. Multinomial Logistic regression
+**multi-level categorical outcomes ~ plasma pfas + covars**
+```{r Multinomial Logistic regression, echo=TRUE, warning=FALSE, message=FALSE}
+### Create regression model formula----
+eo_combinations4 <- list(
+  x = plasma_pfas,
+  y = cat_outcomes_mul) %>%
+  cross_df()
+
+models4 <- eo_combinations4 %>%
+  mutate(covars = str_c(covars, collapse = "+"),
+         formula = str_c(y,"~","log2(", x,")", "+", covars))
+
+### Run multinomial logistic regression----
+models4$output <- map(models4$formula, 
+                      ~nnet::multinom(as.formula(.),
+                                      data = data,
+                                      na.action = na.exclude, trace = FALSE) %>%
+                        tidy(., conf.int = TRUE))
+
+### Create final data frame of all results----
+mod_output_df4 <- models4 %>%
+  unnest(output) %>%   
+  mutate(odds_ratio = exp(estimate),
+         exp_conf_high = exp(conf.high),
+         exp_conf_low = exp(conf.low)) %>%
+  separate(x, 
+           into = c("pfas", NA), 
+           sep = "_targeted|_untargeted",
+           remove = FALSE) %>%
+  clean_names() 
+
+### Create Coefficient Plots-----
+mod_output_df4[grep("log2", mod_output_df4$term),] %>%
+  ggplot(aes(x = pfas,y = odds_ratio)) +
+  geom_point(size = 1) +
+  coord_flip()+
+  geom_errorbar(aes(ymin = exp_conf_low,
+                    ymax = exp_conf_high),
+                width = 0) +
+  geom_hline(yintercept = 1, linetype = 2) +
+  ylab("Odds Ratio (95% CI)") +
+  xlab("Untargeted Plasma PFAS") + 
+  ggtitle("Coefficient Plots(Multinomial Logistic Regression)") +
+  theme_bw() +
+  theme(text = element_text(size = 10))+
+  theme(legend.title = element_blank()) +
+  coord_flip() +
+  facet_nested_wrap(. ~ y + y_level, 
+                    scales = "free_x",
+                    nest_line = element_line(colour = "blue"),
+                    ncol = 4)
+
+### Saving coefficient plots----
+# ggsave(fs::path(dir_figure,"1_coefficient_plot.png"),
+#        width = 7, height = 3, dpi = 300)
+```
+
+## Regression report
+**This part includes the method to combine different regression results into one report**
+```{r regression report, echo=TRUE}
+mod_output_df <- mod_output_df1 %>% 
+  mutate(method = "logistic regression") %>%
+  bind_rows(mod_output_df2 %>% 
+              mutate(method = "ordinal logistic regression")%>% 
+              dplyr::select(-coef_type)) %>%
+  bind_rows(mod_output_df3 %>% 
+              mutate(method = "linear regression")) %>%
+  bind_rows(mod_output_df4 %>% 
+              mutate(method = "multinomial logsitic regression")) %>%
+  dplyr::select(method, everything())
+
+## Saving results----
+# write_csv(mod_output_df,fs::path(dir_report,
+#                                  "1_Regression Result.csv"))
+mod_output_df
+```
+

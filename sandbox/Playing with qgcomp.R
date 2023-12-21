@@ -47,3 +47,14 @@ qgcomp_res <- qgcomp %>%
                                      face = "bold"), 
           axis.title.y = element_blank()))
   
+
+(qc.survfit <- qgcomp::qgcomp.cox.noboot(
+  survival::Surv(yrstoglyc2, glyc) ~ ., 
+  expnms = pfas_names_all,
+  data = data |> 
+    dplyr::select(all_of(pfas_names_all), 
+                  covars[-2],
+                  sex_male,
+                  yrstoglyc2, 
+                  glyc),
+  q = 2))

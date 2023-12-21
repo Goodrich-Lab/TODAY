@@ -23,10 +23,13 @@ omic_names <- full_data %>%
 
 # Log transform and scale Metabolites and Proteins
 full_data <- full_data |>
-  mutate_at(.vars = vars(contains("seq.")),
-            .funs = ~log(.) %>% scale(.) %>% as.numeric(.)) %>% # jg added log transform
-  mutate_at(.vars = vars(contains("met_")),
-            .funs = ~log(.) %>% scale(.) %>% as.numeric(.)) # jg added log transform
+  mutate_at(.vars = vars(contains("seq.")), .funs = ~scale(.) %>% as.numeric(.)) %>% # jg added log transform
+  mutate_at(.vars = vars(contains("met_")), .funs = ~scale(.) %>% as.numeric(.)) # jg added log transform
+
+# log(.) %>% 
+#   log(.) %>% 
+
+
 
 
 # Proteomics metadata -------------------------------
@@ -85,6 +88,7 @@ prot_metadata2 <- prot_metadata2 |>
     AptName == "seq.16768.3" ~ "JUP_1", # Same gene, different Apt Name 
     AptName == "seq.23007.8" ~ "JUP_2", # Same gene, different Apt Name 
     EntrezGeneID == "647087"  ~ "STMP1",
+    EntrezGeneID == "100134938" ~ "UPK3BL1",
     TRUE ~ EntrezGeneSymbol))
 
 # Calculate ratio of expression in kidney versus other tissues. 
@@ -112,3 +116,4 @@ prot_metadata <- prot_metadata2 |>
   tidylog::filter(Organism == "Human") |> 
   dplyr::select(-c(colon:salivary_gland))
 
+rm(prot_tissue_expression)

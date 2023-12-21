@@ -353,17 +353,19 @@ curve <- surv_adjustedcurves(
   size = 1) |>
   rename(Years = time)
 
+# Calculate incidence 
+curve$incidence <- (1-curve$surv)*100
+
 # Make Plot 
-ggplot(curve, aes(x = Years, y = surv, color = variable)) + 
+ggplot(curve, aes(x = Years, y = incidence, color = variable)) + 
   geom_step(size = 1) + 
-  scale_y_continuous(limits =  c(0, 1)) + 
-  ylab("Hyperfiltration Rate") + 
+  scale_y_continuous(limits =  c(0, 100)) + 
+  ylab("Hyperfiltration Incidence (%)") + 
   scale_color_manual(values = c("black", "grey60"), 
                      name = "PFAS Burden Score")  + 
   scale_linetype_manual(values = c("solid","longdash"), 
                         name = "PFAS Burden Score") + 
-  theme(legend.position = c(.1, .2))
-
+  theme(legend.position = c(.1, .85)) 
 
 # ggsave(filename = fs::path(dir_figure,"1127_hw", "KM_curve_score_hyp.jpeg"), 
 #        width = 5, 
@@ -379,7 +381,7 @@ ggplot(curve, aes(x = Years, y = surv, color = variable)) +
                              color = variable)) + 
    geom_step(size = 1) + 
    scale_y_continuous(limits =  c(0, 1)) + 
-   ylab("Hyperfiltration Rate") + 
+   ylab("Survival probability") + 
   scale_color_manual(values = c("black", "grey60"), 
                      name = "PFAS Burden Score")  + 
   scale_linetype_manual(values = c("solid","longdash"), 

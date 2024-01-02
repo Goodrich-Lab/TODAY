@@ -1,8 +1,8 @@
 # directory paths for file architecture
 
 # home directory for project
-dir_home <- here::here() %>% 
-  dirname() %>% 
+dir_home <- here::here() |>
+  dirname() |>
   dirname()
 
 

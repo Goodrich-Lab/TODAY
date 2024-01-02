@@ -1,14 +1,17 @@
 rename_pfas <- function(df){
   df <- df %>%
     mutate(pfas = case_when(grepl("pfos", pfas) ~ "PFOS",
-                                 grepl("pfoa", pfas) ~ "PFOA",
-                                 grepl("pfda", pfas) ~ "PFDA",
-                                 grepl("pfhpa", pfas) ~ "PFHpA",
-                                 grepl("pfhps", pfas) ~ "PFHpS",
-                                 grepl("pfhxs", pfas) ~ "PFHxS",
-                                 grepl("pfna", pfas) ~ "PFNA",
-                                 grepl("pfuna", pfas) ~ "PFUnA",
-                                 grepl("nmefosaa", pfas) ~ "NMeFOSAA",
+                            grepl("pfoa", pfas) ~ "PFOA",
+                            grepl("pfda", pfas) ~ "PFDA",
+                            grepl("pfhpa", pfas) ~ "PFHpA",
+                            grepl("pfhps", pfas) ~ "PFHpS",
+                            grepl("pfhxs", pfas) ~ "PFHxS",
+                            grepl("pfna", pfas) ~ "PFNA",
+                            grepl("pfuna", pfas) ~ "PFUnA",
+                            grepl("nmefosaa", pfas) ~ "NMeFOSAA",
+                            grepl("score_pfsas", pfas) ~ "PFSA Burden Score",
+                            grepl("score_pfcas", pfas) ~ "PFCA Burden Score",
+                            grepl("score", pfas) ~ "PFAS Burden Score",
                             TRUE ~ pfas))
   return(df)
 }

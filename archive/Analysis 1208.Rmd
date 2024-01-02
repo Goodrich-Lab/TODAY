@@ -108,13 +108,17 @@ corrplot::corrplot(cor)
 
 ## Exposure burden score
 ```{r exposure burden score}
+# Create categorical PFAS which are needed for the scoroe
 data_analysis <- full_data %>%
   mutate_at(.vars = vars(all_of(pfas_names_all[c(1,4,5,8)])), 
             .funs = list(
-              decile = ~as.integer(cut(., quantile(., probs = seq(0, 1, 0.1)), include.lowest = TRUE
+              decile = ~as.integer(cut(., quantile(., probs = seq(0, 1, 0.1)), 
+                                       include.lowest = TRUE
               )))) %>%
   mutate(pfas_pfhxs_decile = cut(pfas_pfhxs, 
-                                 quantile(pfas_pfhxs, probs = seq(0, 1, 1/9)), include.lowest = TRUE) %>% as.integer()) %>%
+                                 quantile(pfas_pfhxs, probs = seq(0, 1, 1/9)), 
+                                 include.lowest = TRUE) %>% 
+           as.integer()) %>%
   mutate(pfas_pfda_detected=
            ifelse(pfas_pfda<0.05|pfas_pfda==0.2/sqrt(2), 1, 2)) %>%
   # mutate(pfas_pfhps_detected =
@@ -123,11 +127,17 @@ data_analysis <- full_data %>%
             .funs = list(detected = ~ifelse(.<0.05|.==0.1/sqrt(2), 1, 2))) %>%
   mutate_at(.vars = vars(c("pfas_pfhpa", "pfas_pfhps")), 
             .funs = list(tertile = ~cut(., 
-                                        quantile(., probs = seq(0, 1, 1/3)), include.lowest = TRUE) %>% as.integer()))
+                                        quantile(., probs = seq(0, 1, 1/3)), 
+                                        include.lowest = TRUE) %>% 
+                           as.integer()))
 
 
-burden_score_pfas<- data_analysis %>% 
-  dplyr::select(contains("detected"), contains("decile"), contains("tertile"), -pfas_pfhpa_detected) %>% as.data.frame()
+burden_score_pfas <- data_analysis %>% 
+  dplyr::select(contains("detected"), 
+                contains("decile"), 
+                contains("tertile"), 
+                -pfas_pfhpa_detected) %>% 
+  as.data.frame()
 
 eap.d <- ltm::factor.scores(grm(burden_score_pfas), 
                             method="EAP", resp.patterns =

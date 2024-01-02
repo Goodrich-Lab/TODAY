@@ -1,6 +1,6 @@
 # Clean data
 
-# Subset outcomes, proteins, and metabolites ------
+# 1. Clean putcomes, proteins, and metabolites ------
 prot_metadata <- read_csv(fs::path(dir_data, 
                                    "clean_data",
                                    "Proteome metadata.csv"))
@@ -10,10 +10,12 @@ outcomes <- read_csv(fs::path(dir_data,
                               "TODAY data for ViCTER.csv")) |>
   janitor::remove_empty(which = c("cols"))
 
+# Proteomics
 proteome <- outcomes |> 
   select(SampleId, all_of(prot_metadata$AptName)) |>
   rename(sample_id = SampleId)
 
+# Metabolomics
 plasma_metabolome <- outcomes |>
   tidylog::select(SampleId, contains(".uM"), -contains("mM.Creatinine"))  |>
   rename_all(~str_remove(., ".in.uM")) |>
@@ -21,6 +23,7 @@ plasma_metabolome <- outcomes |>
   janitor::clean_names() |>
   rename(sample_id = met_sample_id)
 
+# Outcomes
 outcomes_only <- outcomes |> 
   tidylog::select(-contains(".uM"),
                   -contains("mM.Creatinine"),
@@ -41,7 +44,7 @@ outcomes_only <- outcomes_only |>
   mutate(time_to_glyc_scld = scale(monthstoglyc) |> as.numeric()) |>
   ungroup()
 
-# PFAS data ---- 
+# 1. Clean PFAS data ---- 
 pfas_data <- read_csv(fs::path(dir_data, "raw_data",
                                "TODAY PFAS 320-95494-1_TalStandard.csv"), 
                       na = c("ND", "")) %>% 
@@ -87,7 +90,7 @@ pfas_metadata <- pfas_data_reduced |>
   # tidylog::filter(pct_na < .8) |>
   ungroup()
 
-# Get common name
+# Get common name 
 pfas_metadata <- pfas_metadata |> 
   mutate(pfas_name = case_when(
     analyte == "Br-Perfluorooctanesulfonic acid" ~ "br_pfos",

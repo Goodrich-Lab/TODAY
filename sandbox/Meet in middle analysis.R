@@ -1,13 +1,12 @@
 ## Meet in the middle analysis
-data_scale <- data %>% mutate_at(.vars = vars(all_of(prot_names)),
-                                 .funs = ~scale(.) %>%
-                                   as.matrix())
-hist(data_scale$seq.15623.1)
+(analysis_pfas_names <- c(pfas_names_all, "score_pfsas", "score_pfcas")) 
+# JG removed overall PFAS burden score, becuase the heatmap looks better without it
+
 
 # 1. Exposure-Mediator regressions ----------------
-result_em <- epiomics::owas(df = data_scale, 
-                            var = c(pfas_names_all, "score"), #
-                            omics = prot_names,
+result_em <- epiomics::owas(df = data_scaled, 
+                            var = "pfas_pfna", #analysis_pfas_names,
+                            omics = omic_names, #prot_names,
                             covars = covars,
                             var_exposure_or_outcome = "exposure",
                             family = "gaussian",
@@ -25,7 +24,6 @@ result_em <- result_em |>
 
 # Check seq.8032.23 (MCCD1)
 
-
 ## filter significant proteins only -----
 # get name of all sig proteins
 omic_names_sig <- result_em |> 
@@ -36,8 +34,10 @@ omic_names_sig <- unique(omic_names_sig$feature_name)
 result_em_sig <- result_em %>% 
   tidylog::filter(feature_name %in% omic_names_sig) |> 
   dplyr::select(omic_layer, var_name, feature_name, test_statistic,
-                estimate, p_value, sig_efnum) |> 
+                estimate, conf_low, conf_high, p_value, sig_efnum) |> 
   rename(estimate_em = estimate, 
+         conf_low_em =  conf_low, 
+         conf_high_em = conf_high,
          p_value_em = p_value, 
          test_statistic_em = test_statistic) 
 
@@ -45,8 +45,8 @@ length(unique(result_em_sig$feature_name))
 
 
 # 2. Mediator-outcome regressions ----------------
-ind_vars <- tibble(exposure = colnames(data %>% dplyr::select(omic_names)))
-dep_vars <- tibble(time = c("yrstohyp2"), event = c("hyp"))
+ind_vars <- tibble(exposure = omic_names)
+dep_vars <- tibble(time = c("daystomic"), event = c("mic"))
 
 # Get exposure and outcome combinations
 mo_comb <- list(omic = ind_vars$exposure, event = dep_vars$event) %>%
@@ -55,13 +55,13 @@ mo_comb <- list(omic = ind_vars$exposure, event = dep_vars$event) %>%
 
 # Create combination of exposures and outcomes
 mo_res_models <- mo_comb %>%
-  mutate(covar = paste0("sex_male+",str_c(covars[-2], collapse = "+")),
+  mutate(covar = str_c(covars, collapse = "+"),
          formula = str_c("Surv(", time, ",", event, ")", "~", omic, "+", covar))
 
 # Run all models
 mo_res_models$output <- map(mo_res_models$formula,
                             ~coxph(as.formula(.),
-                                   data = data_scale) %>%
+                                   data = data_scaled) %>%
                               tidy(., conf.int = TRUE))
 
 # Modify output
@@ -96,19 +96,25 @@ mim_res <- mim_res |>
 
 # Create cleaned PFAS name variable
 mim_res <- mim_res |> 
-  mutate(pfas_name = str_remove(var_name, "pfas_") |> 
-           toupper() |> 
-           str_replace("PS", "pS") |> 
-           str_replace("PA", "pA") |> 
-           str_replace("XS", "xS") |> 
-           str_replace("UNA", "UnA") |> 
-           str_replace("NMEFOSAA", "N-MeFOSAA") |> 
-           str_replace("SCORE", "PFAS Burden"))
+  rename(pfas = var_name) |>
+  rename_pfas() |>
+  rename(pfas_name = pfas) 
+
 
 ## Combine with proteomics metadata ------
 mim_res2 <- mim_res %>% 
   tidylog::left_join(prot_metadata, by = c("feature_name" = "AptName")) |> 
-  tidylog::filter(Organism == "Human")
+  tidylog::filter(Organism == "Human") 
+
+## Filter to features only overlapping in same direction (didn't work)
+# same_dir_results <- mim_res2 |> 
+#   filter(emxmo > 0, p_value_em < 0.05)
+# 
+# length(unique(mim_res2$feature_name))
+# length(unique(same_dir_results$feature_name))
+# 
+# mim_res2 <- mim_res2 %>% 
+#   tidylog::filter(feature_name %in% same_dir_results$feature_name)
 
 # Examine results
 table(mim_res2$highest_expression, mim_res2$second_highest_expression)
@@ -152,18 +158,18 @@ pfas_prot_p_w <- ind_pfas_prot |>
 
 
 # split individual PFAS and the PFAS burden score
-ind_pfas_ee_prot_w   <- pfas_prot_ee_w |> dplyr::select(-contains("PFAS")) |> as.matrix()
-pfas_score_ee_prot_w <- pfas_prot_ee_w |> dplyr::select(contains("PFAS")) |> as.matrix()
-ind_pfas_p_prot_w    <- pfas_prot_p_w  |> dplyr::select(-contains("PFAS")) |> as.matrix()
-pfas_score_p_prot_w  <- pfas_prot_p_w  |> dplyr::select(contains("PFAS")) |> as.matrix()
+ind_pfas_ee_prot_w   <- pfas_prot_ee_w |> dplyr::select(-contains("Score")) |> as.matrix()
+pfas_score_ee_prot_w <- pfas_prot_ee_w |> dplyr::select( contains("Score")) |> as.matrix()
+ind_pfas_p_prot_w    <- pfas_prot_p_w  |> dplyr::select(-contains("Score")) |> as.matrix()
+pfas_score_p_prot_w  <- pfas_prot_p_w  |> dplyr::select( contains("Score")) |> as.matrix()
 
 ### Create protein clusters ----
 row_dend = hclust(dist(ind_pfas_ee_prot_w), method="complete") # row clustering
 
 # Determine optimal number of clusters 
 scale <- scale(ind_pfas_ee_prot_w)
-# factoextra::fviz_nbclust(scale, kmeans, method = "gap_stat")
-# optimal number of clusters: k = 3
+factoextra::fviz_nbclust(scale, kmeans, method = "gap_stat")
+# optimal number of clusters: k = 4
 
 # Set color scale
 max_val <- max(abs(min(ind_pfas_ee_prot_w)), max(ind_pfas_ee_prot_w))
@@ -200,10 +206,10 @@ pfas_prot_hm = Heatmap(ind_pfas_ee_prot_w,
     Heatmap(pfas_score_ee_prot_w, 
             name = "PFAS Burden",
             show_heatmap_legend = FALSE ,
-            col = colorRamp2(c(4, 0, -4), c("red","white", "blue")),
+            col = colorRamp2(c(-4, 0, 4), c( "blue","white", "red")),
             show_row_names = TRUE,
             row_names_gp = gpar(fontsize = 8),
-            column_names_gp = gpar(fontsize = 8),
+            column_names_gp = gpar(fontsize = 8), 
             column_names_rot = 45,
             heatmap_legend_param = list(title = "Test statistic", 
                                         title_gp = gpar(fontsize = 20),
@@ -221,14 +227,18 @@ pfas_prot_hm = Heatmap(ind_pfas_ee_prot_w,
 
 # 5. Heatmap of Protein Tissue Expression ----
 # Select correct variables, remove duplicates with group_by and slicehead
-prot_tissue_expression <-  mim_res2 |> 
+mim_res_for_outcome <-  mim_res2 |> 
   group_by(EntrezGeneSymbol) |> 
   tidylog::slice_head() |>
-  ungroup() |>
-  tidylog::select(EntrezGeneSymbol, 
-                  contains("ratio"),
+  ungroup() |> 
+  arrange(match(EntrezGeneSymbol, rownames(pfas_score_ee_prot_w))) |> 
+  column_to_rownames("EntrezGeneSymbol") 
+
+
+# Convert to matrix for heatmap 
+prot_tissue_expression <- mim_res_for_outcome |>
+  tidylog::select(contains("ratio"),
                   -high_second_high_ratio)  |> 
-  column_to_rownames("EntrezGeneSymbol") |>
   as.matrix()
 
 # Reorder the dataframe to match the other heat maps
@@ -244,9 +254,8 @@ high_expressed_tissues <- prot_tissue_expression |>
 # Filter to only columns which have a value > 0.5
 prot_tissue_fin <- prot_tissue_expression_mat[,high_expressed_tissues$name] 
 
-# Pivot wider to create data matrix -----
-# Heatmap
-set.seed(121)
+
+# Heatmap with tissue protein expression  -------
 (pfas_tissue_expression_prot_hm <- pfas_prot_hm_fin +
     Heatmap(prot_tissue_fin, 
             name = "Tissue Expression",
@@ -254,19 +263,20 @@ set.seed(121)
             col = circlize::colorRamp2(c(0,.5,1), c("white", "darkgreen", "black")),
             show_row_names = TRUE,
             row_names_gp = gpar(fontsize = 8),
+            # Add percent expression in the kidney: 
+            right_annotation = rowAnnotation(kidney = anno_barplot(prot_tissue_expression_mat[,"ratio_kidney"])) ,
             column_names_gp = gpar(fontsize = 8),  
-            # top_annotation = HeatmapAnnotation(
-            #   summary = anno_summary(
-            #     gp = gpar(fill = c(rgb(183, 144, 255,
-            #                            maxColorValue = 255),
-            #                        rgb(255, 165, 138,
-            #                            maxColorValue = 255),
-            #                        rgb(255, 107, 73,
-            #                            maxColorValue = 255))),
-            #     height = unit(3, "cm"))),
-            column_names_rot = 45,
-            heatmap_legend_param = list(title = "Tissue Expression Ratio", 
-                                        title_gp = gpar(fontsize = 20),
-                                        legend_direction = "horizontal",
-                                        legend_width = unit(5, "cm"), 
-                                        title_position = "lefttop")))
+            column_names_rot = 45))
+
+# Heatmap with protein to outcome association ----------- 
+(pfas_tissue_expression_prot_hm <- pfas_prot_hm_fin +
+    Heatmap(as.matrix(mim_res_for_outcome %>% dplyr::select(estimate_mo)), 
+            name = "Tissue Expression",
+            show_heatmap_legend = FALSE,
+            col = circlize::colorRamp2(c(-1.9,0,1.9), c("blue", "white", "red")),
+            show_row_names = TRUE,
+            row_names_gp = gpar(fontsize = 8),
+            # Add percent expression in the kidney: 
+            right_annotation = rowAnnotation(kidney = anno_barplot(prot_tissue_expression_mat[,"ratio_kidney"])) ,
+            column_names_gp = gpar(fontsize = 8),  
+            column_names_rot = 45))

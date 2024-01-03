@@ -16,6 +16,41 @@ rename_pfas <- function(df){
   return(df)
 }
 
+# Rename PFAS with Carbon Chain Length
+rename_pfas_with_chainlength <- function(pfas_names_cleaned){
+  pfas <- pfas_names_cleaned
+  pfas = case_when(grepl("PFUnA", pfas) ~  "PFUnA (11)",
+                   grepl("PFDA", pfas) ~  "PFDA (10)",
+                   grepl("PFNA", pfas) ~  "PFNA (9)",
+                   grepl("PFOA", pfas) ~  "PFOA (8)",
+                   grepl("PFHpA", pfas) ~  "PFHpA (7)",
+                   grepl("PFOS", pfas) ~  "PFOS (8)",
+                   grepl("PFHpS", pfas) ~  "PFHpS (7)",
+                   grepl("PFHxS", pfas) ~  "PFHxS (6)",
+                   TRUE ~ pfas) 
+
+}
+
+
+# Get chain length
+order_pfas_by_chain_length <- function(pfas_names_cleaned_chainlength){
+  pfas <- pfas_names_cleaned_chainlength
+  fct_relevel(pfas, 
+              "PFUnA (11)",   # C 11 HF21O2
+              "PFDA (10)",    # C 10 HF19O2
+              "PFNA (9)",     # C 9 HF17O2
+              "PFOA (8)",     # C 8 HF15O2
+              "PFHpA (7)",    # C 7 HF13O2
+              "PFOS (8)",    # C8HF17O3S
+              "PFHpS (7)",   # C7F15SO3H
+              "PFHxS (6)",   # C6F13SO3H	
+              "NMeFOSAA", #C11H6F17NO4S
+              "PFAS Burden Score",
+              "PFCA Burden Score", 
+              "PFSA Burden Score")
+}
+
+
 rename_outcomes <- function(x){
   nms <- case_when(
     x=="time_to_glyc_scld" ~ "Time to glycemic failure", 

@@ -133,37 +133,102 @@ pfas_survival_models <- models %>%
   tidylog::filter(grepl("score", term) | 
                     grepl("pfas_", term) | 
                     grepl("_sum", term) & !grepl("quintile",term)) %>%
+  rename_pfas() %>%
   mutate(HR = exp(estimate),
          exp_conf_high = exp(conf.high),
          exp_conf_low = exp(conf.low),
-         sig = ifelse(p.value < 0.05, "Sig.", "Not Sig.")) %>%
-  rename_pfas() %>%
-  mutate(pfas = ifelse(pfas %in% levels, pfas, term))
-# Note: 1 unit increase in pfas resulting in xx-fold increase in hazard.
+         sig = ifelse(p.value < 0.05, "Sig.", "Not Sig."), 
+         ind_or_mix = if_else(str_detect(term, "score"), 
+                              "Score", "Individual"), 
+         functional_group = case_when(
+           ind_or_mix == "Score" ~ "Score", 
+           pfas  %in% c("PFOS", "PFHpS", "PFHxS") ~ "SA", 
+           pfas == "NMeFOSAA" ~ "Other", 
+           TRUE ~ "CA") |> 
+           fct_relevel("CA", "SA", "Other", "Score"), 
+         pfas = ifelse(pfas %in% levels, pfas, term), 
+         pfas_chain = rename_pfas_with_chainlength(pfas_names_cleaned = pfas), 
+         pfas_chain = order_pfas_by_chain_length(pfas_chain))
 
 
-# Plot results
+# Note: 1 unit increase in pfas resulting in xx-fold change in hazard.
+
+
+## D. Plot results ------
+# All results
 (p <- pfas_survival_models %>%
-    ggplot(aes(x = term,y = estimate, color = sig)) +
-    geom_point(size = 1) +
-    geom_errorbar(aes(ymin = conf.low,
-                      ymax = conf.high),
-                  width = 0) +
-    geom_hline(yintercept = 0, linetype = 2) +
-    facet_grid( ~ time, scales = "free") +
-    ylab("Log HR (95% CI)") +
-    theme(text = element_text(size = 10),
-          axis.title.y = element_blank(),
-          panel.background = element_rect(fill="white"),
-          strip.background = element_rect(fill = "white"),
-          axis.line.x = element_line(color = "black"),
-          axis.line.y = element_line(color = "black"),
-          legend.position = "none") +
-    coord_flip() +
-    scale_color_manual(values = c("grey", "red")))
+   ggplot(aes(x = term,y = estimate, color = sig)) +
+   geom_point(size = 1) +
+   geom_errorbar(aes(ymin = conf.low,
+                     ymax = conf.high),
+                 width = 0) +
+   geom_hline(yintercept = 0, linetype = 2) +
+   facet_grid( ~ time, scales = "free") +
+   ylab("Log HR (95% CI)") +
+   theme(text = element_text(size = 10),
+         axis.title.y = element_blank(),
+         panel.background = element_rect(fill="white"),
+         strip.background = element_rect(fill = "white"),
+         axis.line.x = element_line(color = "black"),
+         axis.line.y = element_line(color = "black"),
+         legend.position = "none") +
+   coord_flip() +
+   scale_color_manual(values = c("grey", "red")))
 
 
 pfas_survival_models |> 
   filter(str_detect(term, "pfcas")) |> 
   dplyr::select(pfas, event, p.value)
 
+### i) Albuminuria ------
+(fig1a_pfas_albuminuria <- pfas_survival_models %>%
+   dplyr::filter(event == "mic", 
+                 !(term %in% c("score_quintile", 
+                                 "score_quartile", 
+                                 "score_tertile", 
+                                 "score_median1"))) %>% 
+   # mutate(pfas_chain = fct_reorder(pfas_chain, estimate)) %>%
+   ggplot(aes(y = fct_rev(pfas_chain), x = HR)) +
+   geom_point(size = 1) +
+   geom_errorbar(aes(xmin = exp_conf_low,
+                     xmax = exp_conf_high),
+                 width = 0) +
+   geom_vline(xintercept = 1, linetype = 2) +
+   facet_grid(functional_group ~ ., scales = "free", space = "free_y") +
+   xlab("Hazard Ratio (95% CI)") +
+   xlim(c(0, 9)) +
+   theme(strip.text = element_blank(),
+         axis.title.y = element_blank(),
+         panel.background = element_rect(fill="white"),
+         strip.background = element_rect(fill = "white"),
+         axis.line.x = element_line(color = "black"),
+         axis.line.y = element_line(color = "black"),
+         legend.position = "none"))
+
+### ii) Hyperfiltration ------
+(fig1b_pfas_hyp <- pfas_survival_models %>%
+   dplyr::filter(event == "hyp", 
+                 !(term %in% c("score_quintile", 
+                                 "score_quartile", 
+                                 "score_tertile", 
+                                 "score_median1"))) %>% 
+   # mutate(pfas_chain = fct_reorder(pfas_chain, estimate)) %>%
+   ggplot(aes(y = fct_rev(pfas_chain), x = HR)) +
+   geom_point(size = 1) +
+   geom_errorbar(aes(xmin = exp_conf_low,
+                     xmax = exp_conf_high),
+                 width = 0) +
+   geom_vline(xintercept = 1, linetype = 2) +
+   facet_grid(functional_group ~ ., scales = "free", space = "free_y") +
+   xlab("Hazard Ratio (95% CI)") +
+   # xlim(c(0, 4)) +
+   theme(strip.text = element_blank(),
+         axis.title.y = element_blank(),
+         axis.text.y = element_blank(),
+         panel.background = element_rect(fill="white"),
+         strip.background = element_rect(fill = "white"),
+         axis.line.x = element_line(color = "black"),
+         axis.line.y = element_line(color = "black"),
+         legend.position = "none"))
+
+# Combine into one figure

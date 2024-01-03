@@ -3,7 +3,7 @@
 # JG removed overall PFAS burden score, becuase the heatmap looks better without it
 
 
-# 1. Exposure-Mediator regressions ----------------
+# 1) Exposure-Mediator regressions ----------------
 result_em <- epiomics::owas(df = data_scaled, 
                             var = "pfas_pfna", #analysis_pfas_names,
                             omics = omic_names, #prot_names,
@@ -24,7 +24,7 @@ result_em <- result_em |>
 
 # Check seq.8032.23 (MCCD1)
 
-## filter significant proteins only -----
+## A. Clean results -----
 # get name of all sig proteins
 omic_names_sig <- result_em |> 
   dplyr::filter(p_value < 0.05)
@@ -44,7 +44,7 @@ result_em_sig <- result_em %>%
 length(unique(result_em_sig$feature_name))
 
 
-# 2. Mediator-outcome regressions ----------------
+# 2) Mediator-outcome regressions ----------------
 ind_vars <- tibble(exposure = omic_names)
 dep_vars <- tibble(time = c("daystomic"), event = c("mic"))
 
@@ -73,7 +73,7 @@ mo_res_models <- mo_res_models %>%
          exp_conf_low = exp(conf.low),
          sig = ifelse(p.value < 0.05, "Sig.", "Not Sig.")) 
 
-## Filter sig results only ----
+## A. Clean results ----
 # Select key columns, filter significant only
 result_mo_sig <- mo_res_models %>% 
   tidylog::filter(p.value < 0.05) %>%
@@ -83,7 +83,7 @@ result_mo_sig <- mo_res_models %>%
          p.value_mo = p.value)
 
 
-# 3. Combine and analyze meet in middle --------------------
+# 3) Combine and analyze meet in middle --------------------
 # Combine em and mo
 mim_res <- tidylog::inner_join(result_em_sig, 
                                result_mo_sig, 
@@ -280,3 +280,4 @@ prot_tissue_fin <- prot_tissue_expression_mat[,high_expressed_tissues$name]
             right_annotation = rowAnnotation(kidney = anno_barplot(prot_tissue_expression_mat[,"ratio_kidney"])) ,
             column_names_gp = gpar(fontsize = 8),  
             column_names_rot = 45))
+

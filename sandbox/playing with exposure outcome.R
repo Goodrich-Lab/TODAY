@@ -4,7 +4,7 @@
 # 1) PFAS Burden Score --------
 # PFAS names
 c("pfas_pfna",
-  "pfas_pfda",
+  "pfas_pfda", 
   "pfas_pfhpa",
   "pfas_pfoa",
   "pfas_pfos",
@@ -13,7 +13,7 @@ c("pfas_pfna",
   "pfas_nmefosaa",
   "pfas_pfuna")   
 
-## A. Create categorical PFAS which are needed for the score ------
+### A. Create categorical PFAS which are needed for the score ------
 # This has all been moved to "!load clean data" 
 # data_analysis <- full_data %>%
 #   mutate_at(.vars = vars(all_of(pfas_names_all[c(1,4,5,7,8)])), 
@@ -45,7 +45,7 @@ c("pfas_pfna",
 # burden_score_pfsas <- burden_score_pfas |> 
 #   dplyr::select(pfas_pfos_quartile, pfas_pfhxs_quartile, pfas_pfhps_dichotomous)
 # 
-# ## B. Calculate Scores ------
+### B. Calculate Scores ------
 # eap.pfas <- ltm::factor.scores(grm(burden_score_pfas), 
 #                                method="EAP", 
 #                                resp.patterns = burden_score_pfas)$score.dat$z1
@@ -67,7 +67,7 @@ c("pfas_pfna",
 #   bind_cols(score_pfcas = eap.pfcas) %>% 
 #   bind_cols(score_pfsas = eap.pfsas) 
 # 
-# ## C. Create Categorical Scores  ------
+### C. Create Categorical Scores  ------
 # data <- data_analysis1 %>% 
 #   mutate_at(.vars = vars(c(all_of(pfas_names_all), score)),
 #             .funs = list(median = ~ifelse(.<median(.),"0", "1")
@@ -76,9 +76,9 @@ c("pfas_pfna",
 #          score_quartile = cut(score, quantile(score, probs = seq(0, 1, 1/4)), include.lowest = TRUE) %>% as.integer(), #%>% as.character(),
 #          score_quintile = cut(score, quantile(score, probs = seq(0, 1, 1/5)), include.lowest = TRUE) %>% as.integer()  #%>% as.character()
 #   ) %>%
-#   mutate_at(.vars = vars(all_of(pfas_names_all)), .funs = ~  scale(.) %>% as.numeric(.)) # #############################################################
+#   mutate_at(.vars = vars(all_of(pfas_names_all)), .funs = ~  scale(.) %>% as.numeric(.)) 
 # 
-# ## D. Create dummy vars, scale outcomes -----
+### D. Create dummy vars, scale outcomes -----
 # data <- data |>
 #   fastDummies::dummy_cols(select_columns = c('sex'),
 #                           remove_selected_columns = FALSE, 
@@ -87,11 +87,12 @@ c("pfas_pfna",
 #             .funs = ~scale(.) %>% as.numeric(.))
 
 
-# 2. Run Models ------------  
+# 2) Run Models ------------  
 ## A. Set up for analysis ------
 # Get the name of all PFAS exposure variables that were just created 
-ind_vars <- data %>% 
-  dplyr::select(#contains("median"),
+ind_vars <- data_scaled %>% 
+  dplyr::select(
+    #contains("median"),
     #contains("tertile"),
     #contains("quartile"),
     contains("score"), 
@@ -111,27 +112,27 @@ eo_comb <- list(pfas = ind_vars$exposure, event = dep_vars$event) %>%
   cross_df() %>% 
   left_join(dep_vars, by = "event", relationship = "many-to-many")
 
-# B. Set covars ---------
+## B. Set covars ---------
 covars2 <- c("sex_male", "agebase", "serum_creat", "dxtime")
 # original covars:  "case1_control0", "sex_male", "agebase", "serum_creat"   
-# colnames(data[,1:30])
+colnames(data_scaled[,1:30])
 
-
-# run_models <- function(covars2){
 # Get the formula for all models
 models <- eo_comb %>%
-  mutate(covar = paste0("sex_male+",str_c(covars2, collapse = "+")),
+  mutate(covar = str_c(covars2, collapse = "+"),
          formula = str_c("Surv(", time , ",", event, ")", "~", pfas, "+", covar))
 
-## c. Run the models -----
+## C. Run the models -----
 models$output <- map(models$formula,
-                     ~coxph(as.formula(.), data = data) %>%
+                     ~coxph(as.formula(.), data = data_scaled) %>%
                        tidy(., conf.int = TRUE))
 
 # Clean up results
 pfas_survival_models <- models %>%
   unnest(output) %>%
-  tidylog::filter(grepl("score", term)| grepl("pfas_", term)| grepl("_sum", term)&!grepl("quintile",term)) %>%
+  tidylog::filter(grepl("score", term) | 
+                    grepl("pfas_", term) | 
+                    grepl("_sum", term) & !grepl("quintile",term)) %>%
   mutate(HR = exp(estimate),
          exp_conf_high = exp(conf.high),
          exp_conf_low = exp(conf.low),
@@ -161,6 +162,8 @@ pfas_survival_models <- models %>%
     coord_flip() +
     scale_color_manual(values = c("grey", "red")))
 
-# }
-pfas_survival_models |> filter(str_detect(term, "pfcas")) |> dplyr::select(pfas, event, p.value)
+
+pfas_survival_models |> 
+  filter(str_detect(term, "pfcas")) |> 
+  dplyr::select(pfas, event, p.value)
 

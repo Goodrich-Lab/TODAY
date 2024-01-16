@@ -77,10 +77,13 @@ mo_res_models <- mo_res_models %>%
 # Select key columns, filter significant only
 result_mo_sig <- mo_res_models %>% 
   tidylog::filter(p.value < 0.05) %>%
-  dplyr::select(omic, estimate, p.value) |> 
+  dplyr::select(omic, estimate, p.value, HR, exp_conf_high, exp_conf_low) |> 
   rename(feature_name = omic, 
          estimate_mo = estimate, 
-         p.value_mo = p.value)
+         p.value_mo = p.value,
+         HR_mo = HR,
+         exp_conf_low_mo = exp_conf_low,
+         exp_conf_high_mo = exp_conf_high)
 
 
 # 3) Combine and analyze meet in middle --------------------
@@ -106,6 +109,8 @@ mim_res2 <- mim_res %>%
   tidylog::left_join(prot_metadata, by = c("feature_name" = "AptName")) |> 
   tidylog::filter(Organism == "Human") 
 
+
+
 ## Filter to features only overlapping in same direction (didn't work)
 # same_dir_results <- mim_res2 |> 
 #   filter(emxmo > 0, p_value_em < 0.05)
@@ -122,6 +127,54 @@ table(mim_res2$category)
 table(mim_res2$omic_layer)
 length(unique(mim_res2$feature_name))
 
+
+# Coefficient plot HW-----
+## result in Long format for plotting (HW)
+mim_res_l <- mim_res2 %>% 
+  dplyr::select(omic_layer:feature_name, EntrezGeneSymbol, 
+                estimate_em:p_value_em) %>%
+  rename_with(.cols = estimate_em:p_value_em,
+              .fn = ~str_remove(., "_em") ) %>% 
+  mutate(type = "PFNA") %>%
+  rbind(mim_res2 %>% 
+          dplyr::select(omic_layer:feature_name, EntrezGeneSymbol, 
+                        HR_mo:exp_conf_low_mo, p.value_mo) %>%
+          rename(estimate = HR_mo,
+                 conf_low = exp_conf_low_mo,
+                 conf_high = exp_conf_high_mo,
+                 p_value = p.value_mo) %>%
+          mutate(type = "MIC"))
+  
+  
+(coef_plot <- mim_res_l %>%
+   ggplot(aes(x = reorder(EntrezGeneSymbol,estimate), 
+              y = estimate)) + 
+   geom_errorbar(aes(ymin = conf_low , 
+                     ymax = conf_high), 
+                 width = 0) + 
+   geom_point() + 
+   geom_hline(yintercept = 0, linetype = 2, color = "grey50") +
+   # scale_color_manual(values = c("grey60", "black")) +
+   coord_flip() + 
+   # scale_y_continuous(limits = c(-1.75, 3)) +
+   facet_grid(~factor(type, levels=c('PFNA','MIC')),
+              scales = "free") +
+   ylab(" β (95% CI)        HR (95% CI) ") +
+   theme(
+     axis.title.y = element_blank(),
+     # axis.title.x = element_blank(),
+     # strip.text.x = element_blank(), 
+     panel.background = element_rect(fill="grey95"), 
+     strip.background = element_rect(fill = "white"),
+     legend.position = "none",
+     strip.text.y = element_text(angle = 0, hjust = 0)))
+  # +
+  #  scale_color_brewer(name = "Direction", palette = "Dark2" ))
+
+#Save
+ggsave(coef_plot, 
+       filename = here::here(dir_reports, "coef plot.jpeg"), 
+       width = 6, height = 2)
 
 # 4. Heatmap ---------------
 library(ComplexHeatmap)

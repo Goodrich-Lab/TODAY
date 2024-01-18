@@ -18,5 +18,7 @@ library(survival)
 library(ltm)
 library(adjustedCurves)
 library(survminer)
+# devtools::install_github("gerkelab/mediator")
+library(mediator)
 
 theme_set(theme_half_open())

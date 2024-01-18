@@ -102,8 +102,8 @@ eap.pfsas <- ltm::factor.scores(grm(burden_score_pfsas),
                                 resp.patterns = burden_score_pfsas)$score.dat$z1
 
 # Plot scores
-plot(grm(burden_score_pfcas), type = "IIC",legend = TRUE,
-     xlab = "PFAS Burden", main = "", cx = "topright", cex = 0.6)
+# plot(grm(burden_score_pfcas), type = "IIC",legend = TRUE,
+#      xlab = "PFAS Burden", main = "", cx = "topright", cex = 0.6)
 
 # Add burden scores back into data
 data_analysis1 <- data_analysis %>% 

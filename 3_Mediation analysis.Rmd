@@ -1,0 +1,173 @@
+---
+title: 'Today project'
+author: "Hongxu Wang"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+<style type="text/css">
+body{
+font-size: 12pt;
+}
+</style>
+
+```{r exposure outcome setup, include=FALSE}
+source(here::here("!libraries.R"))
+source(here::here("!directories.R"))
+source(here::here("!load_clean_data.R"))
+source(here::here("!functions.R"))
+
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Mediation
+```{r,results='asis'}
+overlapping_feature <- c("seq.10749.18", "seq.13485.20", "seq.18156.7",
+                         "seq.18173.11", "seq.18901.26", "seq.19570.12",
+                         "seq.19765.17", "seq.21144.160", "seq.21164.83",
+                         "seq.21231.3", "seq.21512.6", "seq.22398.5",
+                         "seq.23624.34", "seq.24226.30", "seq.24640.63",
+                         "seq.24708.7", "seq.25082.3", "seq.2750.3",
+                         "seq.2765.4", "seq.2829.19", "seq.4542.24",
+                         "seq.4551.72", "seq.4566.24", "seq.5354.11",
+                         "seq.5494.52", "seq.5638.23", "seq.6264.9",
+                         "seq.6491.59", "seq.8318.13", "seq.8355.80",
+                         "seq.8606.39", "seq.8923.94", "seq.9767.22",
+                         "seq.9875.107", "seq.9957.9")
+
+med_res_df <- data.frame()
+
+for(name in overlapping_feature){
+  cat("### Section ", name, "\n")
+  d2<-data_scaled %>% 
+    dplyr::select(pfas_pfna, name, all_of(covars), daystomic, mic) %>% as.data.frame() %>%
+    rename(mediator = name)
+  # set.seed(1111)
+  med <- CMAverse::cmest(data = d2, 
+                         # model = "gformula",
+                         model = "rb",
+                         event = "mic",
+                         exposure = "pfas_pfna",
+                         mediator = "mediator", 
+                         outcome = "daystomic",
+                         basec = c("sex_male","agebase","serum_creat","dxtime"),
+                         EMint = TRUE,
+                         mreg = list("linear"), 
+                         yreg = "coxph",
+                         # astar = quantile(d2$pfas_pfna, probs = 0.9),
+                         # a = quantile(d2$pfas_pfna, probs = 0.1),
+                         astar = 1,
+                         a = -1,
+                         mval = list(0), 
+                         # estimation = "imputation",
+                         # inference = "bootstrap",
+                         # nboot = 2
+                         estimation = "paramfunc",
+                         inference = "delta"
+                         )
+  print(summary(med))
+  med_res_temp <-  med$effect.pe %>% as.data.frame() %>% rename(pe = ".") %>%
+    cbind(med$effect.ci.low %>% as.data.frame() %>% rename(ci_low = ".") ) %>%
+    cbind(med$effect.ci.high %>% as.data.frame() %>% rename(ci_high = ".")) %>%
+    cbind(med$effect.pval %>% as.data.frame() %>% rename(pval = ".")) %>%
+    mutate(feature_name = name) %>%
+    rownames_to_column("Effect")%>%
+    dplyr::select(feature_name, everything())
+    
+  med_res_df <- rbind(med_res_df,med_res_temp)
+  cat("\n")
+}
+
+med_res_df1 <- med_res_df %>% tidylog::left_join(prot_metadata %>% 
+                       dplyr::select(AptName, EntrezGeneSymbol),
+                     by = c("feature_name"="AptName")) %>% 
+  dplyr::select(feature_name, EntrezGeneSymbol, everything())
+
+## total effect significant
+med_res_df_te <- med_res_df1 %>% 
+  filter(Effect == "Rte"& pval < 0.05)
+
+med_res_df_sig <- med_res_df1 %>%
+  filter(Effect == "pm"&feature_name %in% med_res_df_te$feature_name)
+
+## Combine pm info with regression result
+res_sig <- med_res_df_sig %>% 
+  tidylog::left_join(mim_res2 %>%
+                       dplyr::select(feature_name:max_p))
+## 
+res <- med_res_df1 %>% 
+  tidylog::left_join(mim_res2 %>%
+                       dplyr::select(feature_name:max_p))
+
+write_csv(res, fs::path(dir_results, "med_res_df.csv")) 
+```
+
+# Plot
+```{r}
+# Coefficient plot HW-----
+## result in Long format for plotting (HW)
+res_l <- res_sig %>%
+  dplyr::select(feature_name, EntrezGeneSymbol,
+                estimate_em:p_value_em) %>%
+  rename_with(.cols = estimate_em:p_value_em,
+              .fn = ~str_remove(., "_em") ) %>%
+  mutate(type = "PFNA") %>%
+  rbind(res %>%
+          dplyr::select(feature_name, EntrezGeneSymbol,
+                        HR_mo:exp_conf_low_mo, p.value_mo) %>%
+          rename(estimate = HR_mo,
+                 conf_low = exp_conf_low_mo,
+                 conf_high = exp_conf_high_mo,
+                 p_value = p.value_mo) %>%
+          mutate(type = "MIC")) %>%
+  rbind(res %>%
+          dplyr::select(feature_name, EntrezGeneSymbol,
+                        pe:pval) %>%
+          
+          rename(estimate = pe,
+                 conf_low = ci_low,
+                 conf_high = ci_high,
+                 p_value = pval) %>%
+          mutate(type = " ")
+  )
+
+
+dummy2 <- data.frame(type = c("PFNA", "MIC", " "), Z= c(0, 1, 0))
+
+(coef_plot <- res_l %>%
+   ggplot(aes(x = factor(EntrezGeneSymbol,levels = arrange(res, pe)$EntrezGeneSymbol),
+              y = estimate)) +
+   geom_errorbar(aes(ymin = conf_low ,
+                     ymax = conf_high),
+                 width = 0) +
+   geom_point() +
+   # scale_color_manual(values = c("grey60", "black")) +
+   coord_flip() +
+   # scale_y_continuous(limits = c(-1.75, 3)) +
+   facet_grid(~factor(type, levels=c('PFNA','MIC', " ")),
+              scales = "free") +
+   geom_hline(data = dummy2, aes(yintercept = Z), linetype = 2, color = "grey50") +
+   ylab("β (95% CI)              HR (95% CI)                   Proportion Mediated") +
+   theme(
+     axis.title.y = element_blank(),
+     # axis.title.x = element_blank(),
+     # strip.text.x = element_blank(),
+     panel.background = element_rect(fill="white"),
+     strip.background = element_rect(fill = "white"),
+     legend.position = "none",
+     strip.text.y = element_text(angle = 0, hjust = 0)))
+  # +
+  #  scale_color_brewer(name = "Direction", palette = "Dark2" ))
+
+#Save
+ggsave(coef_plot,
+       filename = here::here(dir_figure, "Fig2 Mediation.jpeg"),
+       width = 8, height = 5)
+```

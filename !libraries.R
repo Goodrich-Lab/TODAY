@@ -20,5 +20,6 @@ library(adjustedCurves)
 library(survminer)
 # devtools::install_github("gerkelab/mediator")
 library(mediator)
+library(gridExtra)
 
 theme_set(theme_half_open())

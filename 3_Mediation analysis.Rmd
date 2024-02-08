@@ -119,7 +119,7 @@ res_l <- res_sig %>%
   rename_with(.cols = estimate_em:p_value_em,
               .fn = ~str_remove(., "_em") ) %>%
   mutate(type = "PFNA") %>%
-  rbind(res %>%
+  rbind(res_sig %>%
           dplyr::select(feature_name, EntrezGeneSymbol,
                         HR_mo:exp_conf_low_mo, p.value_mo) %>%
           rename(estimate = HR_mo,
@@ -127,7 +127,7 @@ res_l <- res_sig %>%
                  conf_high = exp_conf_high_mo,
                  p_value = p.value_mo) %>%
           mutate(type = "MIC")) %>%
-  rbind(res %>%
+  rbind(res_sig %>%
           dplyr::select(feature_name, EntrezGeneSymbol,
                         pe:pval) %>%
           
@@ -135,14 +135,14 @@ res_l <- res_sig %>%
                  conf_low = ci_low,
                  conf_high = ci_high,
                  p_value = pval) %>%
-          mutate(type = " ")
+          mutate(type = "Proportion Mediated")
   )
 
-
-dummy2 <- data.frame(type = c("PFNA", "MIC", " "), Z= c(0, 1, 0))
+dummy2 <- data.frame(type = c("PFNA", "MIC"), Z= c(0, 1))
 
 (coef_plot <- res_l %>%
-   ggplot(aes(x = factor(EntrezGeneSymbol,levels = arrange(res, pe)$EntrezGeneSymbol),
+   filter(type %in% c("PFNA", "MIC"))%>%
+   ggplot(aes(x = factor(EntrezGeneSymbol,levels = arrange(res_sig, pe)$EntrezGeneSymbol),
               y = estimate)) +
    geom_errorbar(aes(ymin = conf_low ,
                      ymax = conf_high),
@@ -151,12 +151,36 @@ dummy2 <- data.frame(type = c("PFNA", "MIC", " "), Z= c(0, 1, 0))
    # scale_color_manual(values = c("grey60", "black")) +
    coord_flip() +
    # scale_y_continuous(limits = c(-1.75, 3)) +
-   facet_grid(~factor(type, levels=c('PFNA','MIC', " ")),
+   facet_grid(~factor(type, levels=c('PFNA','MIC')),
               scales = "free") +
    geom_hline(data = dummy2, aes(yintercept = Z), linetype = 2, color = "grey50") +
-   ylab("β (95% CI)              HR (95% CI)                   Proportion Mediated") +
+   ylab("β (95% CI)              HR (95% CI) ") +
    theme(
      axis.title.y = element_blank(),
+     # axis.title.x = element_blank(),
+     # strip.text.x = element_blank(),
+     panel.background = element_rect(fill="white"),
+     strip.background = element_rect(fill = "white"),
+     legend.position = "none",
+     strip.text.y = element_text(angle = 0, hjust = 0)))
+
+(med_plot <- res_l %>%
+   filter(!type %in% c("PFNA", "MIC"))%>%
+   ggplot(aes(x = factor(EntrezGeneSymbol,levels = arrange(res_sig, pe)$EntrezGeneSymbol),
+              y = estimate)) +
+   geom_bar(stat = "identity", color = "grey50", fill = "grey50") +
+   # scale_color_manual(values = c("grey60", "black")) +
+   coord_flip() +
+   # scale_y_continuous(limits = c(-1.75, 3)) +
+   facet_grid(~type,
+              scales = "free") +
+   geom_hline(yintercept = 0, linetype = 2, color = "grey20") +
+   ylab("Percentage") +
+   theme(
+     axis.title.y = element_blank(),
+     axis.text.y = element_blank(),
+     axis.line.y = element_blank(),
+     axis.ticks.y = element_blank(),
      # axis.title.x = element_blank(),
      # strip.text.x = element_blank(),
      panel.background = element_rect(fill="white"),
@@ -166,8 +190,11 @@ dummy2 <- data.frame(type = c("PFNA", "MIC", " "), Z= c(0, 1, 0))
   # +
   #  scale_color_brewer(name = "Direction", palette = "Dark2" ))
 
+p <- grid.arrange(coef_plot, 
+             med_plot, 
+             nrow = 1,
+             widths = c(4,2))
 #Save
-ggsave(coef_plot,
-       filename = here::here(dir_figure, "Fig2 Mediation.jpeg"),
+ggsave(p,filename = here::here(dir_figure, "Fig2 Mediation.jpeg"),
        width = 8, height = 5)
 ```

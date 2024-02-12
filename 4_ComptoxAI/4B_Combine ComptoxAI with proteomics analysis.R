@@ -4,7 +4,9 @@ source(here::here("!directories.r"))
 library(igraph)
 
 # 1. ComptoxAI graph generated in python ----
-g <- read.graph("~/Documents/comptoxai/comptox_ai/PFAS_prot_dkd_expanded_020524.graphml",
+g <- read.graph(fs::path(dir_results, 
+                         "ComptoxAI",
+                         "PFAS_prot_dkd_expanded_020924.graphml"),
                 format = "graphml")
 
 
@@ -28,7 +30,7 @@ node_metadata <- data.frame(
 plot(node_metadata$authority)
 
 # 2. Proteomics meet in middle results ----
-pfas_proteomics <- read.csv(fs::path(dir_results, "med_res_df.csv"))
+pfas_proteomics <- read.csv(fs::path(dir_results, "med_res_df_020924.csv"))
 
 # Clean proteomics gene names to merge better
 pfas_proteomics <- pfas_proteomics |> 
@@ -48,10 +50,10 @@ pfas_proteomics <- pfas_proteomics |>
 pfas_prot_network <- tidylog::inner_join(node_metadata, 
                                          pfas_proteomics,
                                          by = "geneSymbol")
-
+length(unique(pfas_prot_network$geneSymbol))
 # Remove RSPO2, CHRNA5, FSCN1 because effect estimates are not possible
-pfas_prot_network <- pfas_prot_network |>
-  tidylog::filter(!(geneSymbol %in% c ("RSPO2", "CHRNA5", "FSCN1")))
+# pfas_prot_network <- pfas_prot_network |>
+#   tidylog::filter(!(geneSymbol %in% c ("CHRNA5", "FSCN1")))
 
 # pivot data wider on mediation effect estimates
 ppw <- pfas_prot_network |> 
@@ -84,13 +86,54 @@ cor.test(ppw_rank$hub_score, ppw_rank$Rpnie)
 ppw_rank$geneSymbol <- ppw$geneSymbol
 
 # Plot relationships between graph characteristics and mediation results
-ggplot(ppw_rank, aes(x = hub_score, y = Rpnie, label = geneSymbol)) +
-  geom_point(aes(size = pm), shape = 21, color = "purple", fill = "white") + 
-  ggrepel::geom_text_repel() +
-  xlim(c(2, 32))
-# 
+(cor_plot <- ggplot(ppw_rank, aes(x = hub_score, y = Rpnie, label = geneSymbol)) +
+    geom_hline(yintercept = 15, linetype = 3) + 
+    geom_vline(xintercept = 15, linetype = 3) + 
+    ggrepel::geom_label_repel(force = 1, box.padding = .5, min.segment.length = 0) +
+  geom_point(aes(size = pm), shape = 21, color = "black", fill = "grey50") + 
+  scale_size(name = "Percent\nMediated\n(Ranking)") + 
+    xlab("Hub Score (Ranking)") + 
+    ylab("Pure Natural Indirect Effect (Rank)") +
+  xlim(c(2, 32)))
+ 
 # ggplot(pfas_prot_network, aes(x = authority, y = pe)) + 
 #   geom_point() + 
 #   facet_wrap(~Effect, scales = "free")
 
-jag2::reformat_names("Nikos Stratakis,1 Augusto Anguita-Ruiz,1 Lorenzo Fabbri,1  Léa Maitre,1 Juan R. González,1  Sandra Andrusaityte,2 Xavier Basagaña,1 Eva Borràs,3 Hector C. Keun,4 Lida Chatzi,5 David Conti,5 Jesse Goodrich,5 Regina Grazuleviciene,2 Line Småstuen Haug,6 Barbara Heude,7 Rosemary McEachan,8 Mark Nieuwenhuijsen,1 Theano Roumeliotaki,9 Eduard Sabidó,3 Rémy Slama,10 Cathrine Thomsen,6 Jose Urquiza,1 Marina Vafeiadi,9 John Wright,8 Mariona Bustamante,1 Martine Vrijheid")
+
+
+# 3. Plot Graph ------
+
+
+V(g)$node_color <- case_when(
+  V(g)$type == "Disease"                ~ "purple",  
+  V(g)$type == "mediating-protein"      ~ "Light Blue",
+  V(g)$type == "non-identified protein" ~ "grey50", 
+  V(g)$type == "PFAS"                   ~ "red")
+  
+
+str(g)
+
+
+plot.igraph(g, layout = layout_with_fr(g), 
+            vertex.color=V(g)$node_color, 
+            vertex.frame.color="#555555", 
+            vertex.label=V(g)$id, vertex.label.color="black")
+            edge.
+            vertex.label.cex=.7) 
+                    vertex.size = 6, vertex.label = NA, edge.curved=.1)
+
+
+# With NetworkD3
+
+
+g_d3 <- igraph_to_networkD3(g, group = members)
+
+# Create force directed network plot
+forceNetwork(Links = karate_d3$links, Nodes = karate_d3$nodes, 
+             Source = 'source', Target = 'target', 
+             NodeID = 'name', Group = 'group')
+
+
+# With GGraph
+library(ggraph)

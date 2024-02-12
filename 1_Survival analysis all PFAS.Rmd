@@ -37,6 +37,7 @@ outcome_biomaker
 (analysis_pfas_names <- c(pfas_names_all, "score", "score_pfsas", "score_pfcas")) 
 # Covariates for primary analysis
 covars
+
 # Order of PFAS for figures
 levels
 ```
@@ -74,13 +75,44 @@ models <- eo_comb %>%
          formula = str_c("Surv(", time , ",", event, ")", "~", pfas, "+", covar))
 
 ## C. Run the models -----
+## log transformed and scaled PFAS
 models$output <- map(models$formula,
                      ~coxph(as.formula(.), data = data_scaled) %>%
                        tidy(., conf.int = TRUE))
 
+## Log transformed PFAS (not scaled)
+models$output_pfas_lg2 <- map(models$formula,
+                     ~coxph(as.formula(.), data = data_log2) %>%
+                       tidy(., conf.int = TRUE))
+
 # Clean up results
 pfas_survival_models <- models %>%
+  dplyr::select(-output_pfas_lg2) %>%
   unnest(output) %>%
+  tidylog::filter(grepl("score", term) | 
+                    grepl("pfas_", term) | 
+                    grepl("_sum", term) & !grepl("quintile",term)) %>%
+  rename_pfas() %>%
+  mutate(HR = exp(estimate),
+         exp_conf_high = exp(conf.high),
+         exp_conf_low = exp(conf.low),
+         sig = ifelse(p.value < 0.05, "Sig.", "Not Sig."), 
+         ind_or_mix = if_else(str_detect(term, "score"), 
+                              "Score", "Individual"), 
+         functional_group = case_when(
+           ind_or_mix == "Score" ~ "Score", 
+           pfas  %in% c("PFOS", "PFHpS", "PFHxS") ~ "SA", 
+           pfas == "NMeFOSAA" ~ "Other", 
+           TRUE ~ "CA") |> 
+           fct_relevel("CA", "SA", "Other", "Score"), 
+         pfas = ifelse(pfas %in% levels, pfas, term), 
+         pfas_chain = rename_pfas_with_chainlength(pfas_names_cleaned = pfas), 
+         pfas_chain = order_pfas_by_chain_length(pfas_chain))
+
+# Clean up results
+pfas_survival_models_lg2 <- models %>%
+    dplyr::select(-output) %>%
+  unnest(output_pfas_lg2) %>%
   tidylog::filter(grepl("score", term) | 
                     grepl("pfas_", term) | 
                     grepl("_sum", term) & !grepl("quintile",term)) %>%
@@ -146,7 +178,7 @@ pfas_survival_models |>
    geom_vline(xintercept = 1, linetype = 2) +
    facet_grid(functional_group ~ ., scales = "free", space = "free_y") +
    xlab("Hazard Ratio (95% CI)") +
-   xlim(c(0, 9)) +
+   xlim(c(0, 10)) +
    theme(strip.text = element_blank(),
          axis.title.y = element_blank(),
          panel.background = element_rect(fill="white"),
@@ -155,8 +187,10 @@ pfas_survival_models |>
          axis.line.y = element_line(color = "black"),
          legend.position = "none"))
 
+
 #Save
 ggsave(fig1a_pfas_albuminuria,
        filename = here::here(dir_figure, "Fig1 Survival Coef plot.jpeg"),
        width = 4, height = 3)
 ```
+

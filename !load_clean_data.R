@@ -49,13 +49,43 @@ pfas_names_all <- c("pfas_pfna",
                     "pfas_nmefosaa", 
                     "pfas_pfuna")
 
-covars <- c("sex_male", "agebase", "serum_creat", "dxtime")
+covars <- c("sex_male", "agebase", "eGFR", "dxtime")
+
 levels <- c("PFUnA", "PFHpS","PFHpA","NMeFOSAA","PFDA","PFNA",
             "PFHxS", "PFOA", "PFOS", 
             "PFAS Burden Score",
             "PFSA Burden Score",
             "PFCA Burden Score")
 
+
+## C. Calculate eGFR
+
+# Function to calculate eGFR, based on CKD-EPI 2021 formula
+calculate_eGFR <- function(Scr, Age, Gender) {
+  # Constants for males and females
+  if (Gender == 'female') {
+    K <- 0.7
+    alpha <- -0.241
+    gender_factor <- 1.012
+  } else if (Gender == 'male') {
+    K <- 0.9
+    alpha <- -0.302
+    gender_factor <- 1
+  } else {
+    stop("Gender must be 'female' or 'male'")
+  }
+  
+  # eGFR calculation
+  eGFR <- 142 * (min(Scr/K, 1)^alpha) * (max(Scr/K, 1)^-1.200) * (0.9938^Age) * gender_factor
+  
+  return(eGFR)
+}
+
+
+original_data <- original_data |>
+  rowwise() |>
+  mutate(eGFR = calculate_eGFR(serum_creat, Age = agebase, Gender = sex)) |> 
+  ungroup()
 
 # 2. Calculate PFAS burden scores --------------
 ## A. Create categorical PFAS which are needed for the score ------
@@ -83,7 +113,8 @@ burden_score_pfas <- data_analysis %>%
   as.data.frame()
 # Select PFCAs
 burden_score_pfcas <- burden_score_pfas |> 
-  dplyr::select(pfas_pfhpa_detected, pfas_pfoa_quartile, pfas_pfna_quartile, pfas_pfda_detected, pfas_pfuna_detected)
+  dplyr::select(pfas_pfhpa_detected, pfas_pfoa_quartile, pfas_pfna_quartile, 
+                pfas_pfda_detected, pfas_pfuna_detected)
 
 # Select PFSAs
 burden_score_pfsas <- burden_score_pfas |> 
@@ -106,7 +137,7 @@ eap.pfsas <- ltm::factor.scores(grm(burden_score_pfsas),
 #      xlab = "PFAS Burden", main = "", cx = "topright", cex = 0.6)
 
 # Add burden scores back into data
-data_analysis1 <- data_analysis %>% 
+data_raw <- data_analysis %>% 
   bind_cols(score = eap.pfas) %>%  
   bind_cols(score_pfcas = eap.pfcas) %>% 
   bind_cols(score_pfsas = eap.pfsas) 
@@ -115,29 +146,29 @@ rm(eap.pfsas, eap.pfcas, eap.pfas,
    burden_score_pfas, burden_score_pfcas, burden_score_pfsas)
 
 ## C. Create Categorical Scores  ------
-data <- data_analysis1 %>% 
+data2 <- data_raw %>% 
   mutate_at(.vars = vars(c(all_of(pfas_names_all), score)),
             .funs = list(median = ~ifelse(.<median(.),"0", "1"))) %>%
   mutate(score_tertile  = cut(score, quantile(score, probs = seq(0, 1, 1/3)), include.lowest = TRUE) %>% as.integer(), 
          score_quartile = cut(score, quantile(score, probs = seq(0, 1, 1/4)), include.lowest = TRUE) %>% as.integer(), 
-         score_quintile = cut(score, quantile(score, probs = seq(0, 1, 1/5)), include.lowest = TRUE) %>% as.integer()  
-  ) %>%
-  mutate_at(.vars = vars(all_of(pfas_names_all)), 
-            .funs = ~ log2(.) %>% scale(.) %>% as.numeric(.)) # log transform here 
+         score_quintile = cut(score, quantile(score, probs = seq(0, 1, 1/5)), include.lowest = TRUE) %>% as.integer() )
 
 ## D. Create dummy vars, scale outcomes -----
-data <- data |>
+data_log2 <- data2 |>
   fastDummies::dummy_cols(select_columns = c('sex'),
                           remove_selected_columns = FALSE, 
                           remove_most_frequent_dummy = TRUE) |>
   mutate_at(.vars = vars(c(outcome_glu)), 
-            .funs = ~scale(.) %>% as.numeric(.))
+            .funs = ~scale(.) %>% as.numeric(.)) %>%
+  mutate_at(.vars = vars(all_of(pfas_names_all)), 
+            .funs = ~ log2(.) %>% as.numeric(.)) # log transform here 
 
-# Rename dataset 
-data_scaled <- data 
+data_scaled <- data_log2 |> 
+  tidylog::mutate_at(.vars = vars(all_of(pfas_names_all)), 
+          .funs = ~ scale(.) %>% as.numeric(.)) # log transform here 
 
 # Clean up data environment
-rm(data_analysis, data_analysis1, data)
+rm(data_analysis, data2)
 
 # 3. Proteomics metadata -------------------------------
 # proteomics metadata specific to this project

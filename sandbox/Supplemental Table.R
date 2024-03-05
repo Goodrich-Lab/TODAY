@@ -3,9 +3,11 @@ est <- read_csv(fs::path(dir_results,
   mutate(`PFNA β[95%CI]` = paste(round(estimate_em, 2), "[", 
                                round(conf_low_em, 2), ",",
                                round(conf_high_em, 2),"]"),
+         `PFNA P-Value` = round(p_value_em, 2),
          `Albuminuria β[95%CI]` = paste(round(estimate_mo, 2), "[", 
                                           round(conf_low_mo, 2), ",",
-                                          round(conf_high_mo, 2),"]"))
+                                          round(conf_high_mo, 2),"]"),
+         `Albuminuria P-Value` = round(p.value_mo, 2))
   
 
 med <- read_csv(fs::path(dir_results, "med_res_df_020924.csv"))
@@ -26,10 +28,10 @@ med_w <- med %>% filter(Effect %in% c("Rtnde", "Rpnie", "Rte")) %>%
                                 round(ci_high_Rte, 2),"]"))
 
 df <- est %>% 
-  dplyr::select(EntrezGeneSymbol, contains("[95%CI]")) %>%
+  dplyr::select(EntrezGeneSymbol, contains("PFNA"), contains("Albuminuria")) %>%
   tidylog::left_join(med_w %>% 
                        dplyr::select(EntrezGeneSymbol, contains("[95%CI]"))) %>%
   rename(`Protein name` = EntrezGeneSymbol)
 
 
-writexl::write_xlsx(df, fs::path(dir_results, "Supplemental Table.xlsx"))                   
+writexl::write_xlsx(df, fs::path(dir_results, "Supplemental Table 2.xlsx"))                   

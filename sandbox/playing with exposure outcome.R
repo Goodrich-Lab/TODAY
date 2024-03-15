@@ -14,83 +14,94 @@ c("pfas_pfna",
   "pfas_pfuna")   
 
 ### A. Create categorical PFAS which are needed for the score ------
-# This has all been moved to "!load clean data" 
-# data_analysis <- full_data %>%
-#   mutate_at(.vars = vars(all_of(pfas_names_all[c(1,4,5,7,8)])), 
-#             .funs = list(
-#               quartile = ~as.integer(cut(., quantile(., probs = seq(0, 1, 0.25)), 
-#                                        include.lowest = TRUE
-#               )))) %>%
-#   mutate(pfas_pfda_detected = ifelse(pfas_pfda<0.05|pfas_pfda==0.2/sqrt(2), 1, 2)) %>%
-#   mutate_at(.vars = vars(c("pfas_pfhpa","pfas_pfuna")),
-#             .funs = list(detected = ~ifelse(.<0.05|.==0.1/sqrt(2), 1, 2))) %>%
-#   tidylog::mutate_at(.vars = vars(c("pfas_pfhps", "pfas_pfhpa")), #, 
-#             .funs = list(dichotomous = ~cut(., 
-#                                         quantile(., probs = seq(0, 1, .5)), 
-#                                         include.lowest = TRUE) %>% 
-#                            as.integer()))
-# 
-# # Select just the categorical PFAS
-# burden_score_pfas <- data_analysis %>% 
-#   dplyr::select(contains("detected"), 
-#                 contains("quartile"), 
-#                 contains("dichotomous"), 
-#                 -pfas_pfhpa_dichotomous) %>% 
-#   as.data.frame()
-# # Select PFCAs
-# burden_score_pfcas <- burden_score_pfas |> 
-#   dplyr::select(pfas_pfhpa_detected, pfas_pfoa_quartile, pfas_pfna_quartile, pfas_pfda_detected, pfas_pfuna_detected)
-# 
-# # Select PFSAs
-# burden_score_pfsas <- burden_score_pfas |> 
-#   dplyr::select(pfas_pfos_quartile, pfas_pfhxs_quartile, pfas_pfhps_dichotomous)
-# 
-### B. Calculate Scores ------
-# eap.pfas <- ltm::factor.scores(grm(burden_score_pfas), 
-#                                method="EAP", 
-#                                resp.patterns = burden_score_pfas)$score.dat$z1
-# 
-# eap.pfcas <- ltm::factor.scores(grm(burden_score_pfcas), 
-#                                 method="EAP", 
-#                                 resp.patterns = burden_score_pfcas)$score.dat$z1
-# eap.pfsas <- ltm::factor.scores(grm(burden_score_pfsas), 
-#                                 method="EAP", 
-#                                 resp.patterns = burden_score_pfsas)$score.dat$z1
-# 
-# # Plot scores
-# plot(grm(burden_score_pfcas), type = "IIC",legend = TRUE,
-#      xlab = "PFAS Burden", main = "", cx = "topright", cex = 0.6)
-# 
-# # Add burden scores back into data
-# data_analysis1 <- data_analysis %>% 
-#   bind_cols(score = eap.pfas) %>%  
-#   bind_cols(score_pfcas = eap.pfcas) %>% 
-#   bind_cols(score_pfsas = eap.pfsas) 
-# 
-### C. Create Categorical Scores  ------
-# data <- data_analysis1 %>% 
-#   mutate_at(.vars = vars(c(all_of(pfas_names_all), score)),
-#             .funs = list(median = ~ifelse(.<median(.),"0", "1")
-#             )) %>%
-#   mutate(score_tertile  = cut(score, quantile(score, probs = seq(0, 1, 1/3)), include.lowest = TRUE) %>% as.integer(), #%>% as.character(),
-#          score_quartile = cut(score, quantile(score, probs = seq(0, 1, 1/4)), include.lowest = TRUE) %>% as.integer(), #%>% as.character(),
-#          score_quintile = cut(score, quantile(score, probs = seq(0, 1, 1/5)), include.lowest = TRUE) %>% as.integer()  #%>% as.character()
-#   ) %>%
-#   mutate_at(.vars = vars(all_of(pfas_names_all)), .funs = ~  scale(.) %>% as.numeric(.)) 
-# 
-### D. Create dummy vars, scale outcomes -----
-# data <- data |>
-#   fastDummies::dummy_cols(select_columns = c('sex'),
-#                           remove_selected_columns = FALSE, 
-#                           remove_most_frequent_dummy = TRUE) |>
-#   mutate_at(.vars = vars(c(outcome_glu)), 
-#             .funs = ~scale(.) %>% as.numeric(.))
+# This has all been moved to "!load clean data"
+data_analysis <- original_data %>%
+  mutate_at(.vars = vars(all_of(pfas_names_all[c(1,4,5,7,8)])),
+            .funs = list(
+              quartile = ~as.integer(cut(., quantile(., probs = seq(0, 1, 0.25)),
+                                       include.lowest = TRUE
+              )))) %>%
+  mutate(pfas_pfda_detected = ifelse(pfas_pfda<0.05|pfas_pfda==0.2/sqrt(2), 1, 2)) %>% # 35% non-detect
+  mutate(pfas_pfuna_detected = ifelse(pfas_pfuna<0.05|pfas_pfuna==0.1/sqrt(2), 1, 2)) %>%
+  # mutate_at(.vars = vars(c("pfas_pfhpa", "pfas_pfuna")), #"", # PFUnA: 40% non-detect
+  #           .funs = list(detected = ~ifelse(.<0.05|.==0.1/sqrt(2), 1, 2))) %>%
+  tidylog::mutate_at(.vars = vars(c("pfas_pfhps", "pfas_pfhpa")), #Both 28% non-detect
+            .funs = list(dichotomous = ~cut(.,
+                                        quantile(., probs = seq(0, 1, 1/3)),
+                                        include.lowest = TRUE) %>%
+                           as.integer()))
+
+# Select just the categorical PFAS
+burden_score_pfas <- data_analysis %>%
+  dplyr::select(contains("detected"),
+                contains("quartile"),
+                contains("dichotomous")) %>%
+  as.data.frame()
+
+colnames(burden_score_pfas)
+
+# Select PFCAs
+burden_score_pfcas <- burden_score_pfas |>
+  dplyr::select(pfas_pfoa_quartile,
+                pfas_pfna_quartile,
+                pfas_pfhpa_dichotomous,
+                pfas_pfda_detected,
+                pfas_pfuna_detected)
+
+# Select PFSAs
+burden_score_pfsas <- burden_score_pfas |>
+  dplyr::select(pfas_pfos_quartile, 
+                pfas_pfhxs_quartile, 
+                pfas_pfhps_dichotomous)
+
+## B. Calculate Scores ------
+eap.pfas <- ltm::factor.scores(grm(burden_score_pfas),
+                               method="EAP",
+                               resp.patterns = burden_score_pfas)$score.dat$z1
+
+eap.pfcas <- ltm::factor.scores(grm(burden_score_pfcas),
+                                method="EAP",
+                                resp.patterns = burden_score_pfcas)$score.dat$z1
+eap.pfsas <- ltm::factor.scores(grm(burden_score_pfsas),
+                                method="EAP",
+                                resp.patterns = burden_score_pfsas)$score.dat$z1
+
+# Plot scores
+plot(grm(burden_score_pfcas), type = "IIC",legend = TRUE,
+     xlab = "PFAS Burden", main = "", cx = "topright", cex = 0.6)
+
+# Add burden scores back into data
+data_analysis1 <- data_analysis %>%
+  bind_cols(score = eap.pfas) %>%
+  bind_cols(score_pfcas = eap.pfcas) %>%
+  bind_cols(score_pfsas = eap.pfsas)
+
+## C. Create Categorical Scores  ------
+data <- data_analysis1 %>%
+  mutate_at(.vars = vars(c(all_of(pfas_names_all), score)),
+            .funs = list(median = ~ifelse(.<median(.),"0", "1")
+            )) %>%
+  mutate(score_tertile  = cut(score, quantile(score, probs = seq(0, 1, 1/3)), include.lowest = TRUE) %>% as.integer(), #%>% as.character(),
+         score_quartile = cut(score, quantile(score, probs = seq(0, 1, 1/4)), include.lowest = TRUE) %>% as.integer(), #%>% as.character(),
+         score_quintile = cut(score, quantile(score, probs = seq(0, 1, 1/5)), include.lowest = TRUE) %>% as.integer()  #%>% as.character()
+  ) %>%
+  mutate_at(.vars = vars(all_of(pfas_names_all)), .funs = ~  scale(.) %>% as.numeric(.))
+
+
+
+## D. Create dummy vars, scale outcomes -----
+data <- data |>
+  fastDummies::dummy_cols(select_columns = c('sex'),
+                          remove_selected_columns = FALSE,
+                          remove_most_frequent_dummy = TRUE) |>
+  mutate_at(.vars = vars(c(outcome_glu)),
+            .funs = ~scale(.) %>% as.numeric(.))
 
 
 # 2) Run Models ------------  
 ## A. Set up for analysis ------
 # Get the name of all PFAS exposure variables that were just created 
-ind_vars <- data_scaled %>% 
+ind_vars <- data %>% 
   dplyr::select(
     #contains("median"),
     #contains("tertile"),
@@ -124,7 +135,7 @@ models <- eo_comb %>%
 
 ## C. Run the models -----
 models$output <- map(models$formula,
-                     ~coxph(as.formula(.), data = data_scaled) %>%
+                     ~coxph(as.formula(.), data = data) %>%
                        tidy(., conf.int = TRUE))
 
 # Clean up results

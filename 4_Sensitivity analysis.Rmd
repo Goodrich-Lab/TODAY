@@ -71,7 +71,7 @@ eo_comb <- list(pfas = ind_vars$exposure, event = dep_vars$event) %>%
 
 # Get the formula for all models
 models <- eo_comb %>%
-  mutate(covar = str_c(covars, collapse = "+"),
+  mutate(covar = str_c(c(covars,"tx"), collapse = "+"),
          formula = str_c("Surv(", time , ",", event, ")", "~", pfas, "+", covar))
 
 ## C. Run the models -----
@@ -146,7 +146,7 @@ pfas_survival_models_result<- pfas_survival_models %>%
   dplyr::select(`PFAS Name`, `HR[95%CI]`,`P Value`)
 
 writexl::write_xlsx(pfas_survival_models_result, 
-                    fs::path(dir_results, "Supplemental Table 1.xlsx"))
+                    fs::path(dir_results, "Supplemental Table Sensitivity Analysis.xlsx"))
 ```
 
 # Coefficient Plot

@@ -90,8 +90,7 @@ for(name in prot_names){
 ## Adding name to the result
 med_result <- med.results %>% rownames_to_column("AptName") %>%
   tidylog::left_join(meta_pro %>% dplyr::select(AptName, EntrezGeneSymbol)) %>%
-  dplyr::select(AptName, EntrezGeneSymbol, everything())%>%
-  mutate(EntrezGeneSymbol = ifelse(AptName == "seq.8355.80", "ISM1", EntrezGeneSymbol))
+  dplyr::select(AptName, EntrezGeneSymbol, everything())
 
 
 write_csv(med_result,fs::path(dir_results,'pairwise_mediation_result.csv'))
@@ -111,13 +110,13 @@ res <- mim_res %>%
 # Coefficient plot HW-----
 ## result in Long format for plotting (HW)
 res_l <- res %>%
-  dplyr::select(feature_name, EntrezGeneSymbol,
+  dplyr::select(feature_name, Target,
                 estimate_em:p_value_em) %>%
   rename_with(.cols = estimate_em:p_value_em,
               .fn = ~str_remove(., "_em") ) %>%
   mutate(type = "PFNA") %>%
   bind_rows(res%>%
-              dplyr::select(feature_name, EntrezGeneSymbol,
+              dplyr::select(feature_name, Target,
                             estimate_mo:conf_high_mo, p.value_mo) %>%
               # estimate_mo:adjusted_pval_mo, p.value_mo) %>%
               rename(estimate  = estimate_mo,
@@ -130,7 +129,7 @@ res_l <- res %>%
               #        p_value = p.value_mo) %>%
               mutate(type = "Albuminuria")) %>%
   bind_rows(res%>%
-              dplyr::select(feature_name, EntrezGeneSymbol,
+              dplyr::select(feature_name, Target,
                             PMed.avg:PMed.avg.pval) %>%
               rename(estimate = PMed.avg,
                      conf_low = PMed.avg.lo,
@@ -143,7 +142,7 @@ dummy2 <- data.frame(type = c("PFNA", "Albuminuria"), Z= c(0, 0))
 
 (coef_plot <- res_l %>%
     filter(type %in% c("PFNA", "Albuminuria"))%>%
-    ggplot(aes(x = factor(EntrezGeneSymbol,levels = arrange(res, PMed.avg)$EntrezGeneSymbol),
+    ggplot(aes(x = factor(Target,levels = arrange(res, PMed.avg)$Target),
                y = estimate)) +
     geom_errorbar(aes(ymin = conf_low ,
                       ymax = conf_high),
@@ -167,7 +166,7 @@ dummy2 <- data.frame(type = c("PFNA", "Albuminuria"), Z= c(0, 0))
 
 (med_plot <- res_l %>%
     filter(!type %in% c("PFNA", "Albuminuria"))%>%
-    ggplot(aes(x = factor(EntrezGeneSymbol,levels = arrange(res, PMed.avg)$EntrezGeneSymbol),
+    ggplot(aes(x = factor(Target,levels = arrange(res, PMed.avg)$Target),
                y = estimate)) +
     geom_bar(stat = "identity", color = "white", fill = "grey50", size = 0.001) +
     # scale_color_manual(values = c("grey60", "black")) +
@@ -196,14 +195,14 @@ p <- grid.arrange(coef_plot,
                   nrow = 1,
                   widths = c(4,2))
 #Save
-ggsave(p,filename = here::here(dir_figure, "Fig2 Mediation V3.jpeg"),
+ggsave(p,filename = here::here(dir_figure, "Fig2 Mediation V4.jpeg"),
        width = 8, height = 6)
 ```
 
 ## Supplemental Table
 ```{r supplemental table}
 est <- read_csv(fs::path(dir_results, 
-                          "meet_in_middle_res_020924.csv")) %>%
+                          "meet_in_middle_res_040924.csv")) %>%
   mutate(`PFNA β[95%CI]` = paste0(round(estimate_em, 2), " [", 
                                round(conf_low_em, 2), ",",
                                round(conf_high_em, 2),"]"),
@@ -214,23 +213,30 @@ est <- read_csv(fs::path(dir_results,
          `Albuminuria P-Value` = round(p.value_mo, 2))
   
 
-med <- read.csv(fs::path(dir_results,'pairwise_mediation_result.csv')) %>%
+med <- read.csv(fs::path(dir_results,'pairwise_mediation_result V1.csv')) %>%
   filter(AptName %in% mim_res$feature_name)
 
-med_w <- med %>% filter(Effect %in% c("Rtnde", "Rpnie", "Rte")) %>%
-  dplyr::select(feature_name, EntrezGeneSymbol,Effect, pe, ci_low, ci_high) %>%
-  pivot_wider(
-              names_from = "Effect",
-              values_from = c(pe, ci_low, ci_high)) %>%
-  mutate(`Rtnde[95%CI]` = paste0(round(pe_Rtnde, 2), " [", 
-                                round(ci_low_Rtnde, 2), ",",
-                                round(ci_high_Rtnde, 2),"]"),
-         `Rpnie[95%CI]` = paste0(round(pe_Rpnie, 2), " [",
-                                round(ci_low_Rpnie, 2), ",",
-                                round(ci_high_Rpnie, 2),"]"),
-         `Total Effect[95%CI]` = paste0(round(pe_Rte, 2), " [", 
-                                round(ci_low_Rte, 2), ",",
-                                round(ci_high_Rte, 2),"]"))
+# med_w <- med %>% filter(Effect %in% c("Rtnde", "Rpnie", "Rte")) %>%
+#   dplyr::select(feature_name, EntrezGeneSymbol,Effect, pe, ci_low, ci_high) %>%
+#   pivot_wider(
+#               names_from = "Effect",
+#               values_from = c(pe, ci_low, ci_high)) %>%
+#   mutate(`Rtnde[95%CI]` = paste0(round(pe_Rtnde, 2), " [", 
+#                                 round(ci_low_Rtnde, 2), ",",
+#                                 round(ci_high_Rtnde, 2),"]"),
+#          `Rpnie[95%CI]` = paste0(round(pe_Rpnie, 2), " [",
+#                                 round(ci_low_Rpnie, 2), ",",
+#                                 round(ci_high_Rpnie, 2),"]"),
+#          `Total Effect[95%CI]` = paste0(round(pe_Rte, 2), " [", 
+#                                 round(ci_low_Rte, 2), ",",
+#                                 round(ci_high_Rte, 2),"]"))
+
+med_w <- med %>% 
+  dplyr::select(PMed.avg, PMed.avg.lo, PMed.avg.hi,PMed.avg.pval) %>% 
+  mutate(`Proportion Mediated[95%CI]` = paste0(round(PMed.avg, 2), " [",
+                                round(PMed.avg.lo, 2), ",",
+                                round(PMed.avg.hi, 2),"]"),
+         `P-value` = PMed.avg.pval)
 
 df <- est %>% 
   dplyr::select(EntrezGeneSymbol, contains("PFNA"), contains("Albuminuria")) %>%

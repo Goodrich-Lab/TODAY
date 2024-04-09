@@ -142,12 +142,12 @@ mim_res_temp <- mim_res_temp |>
 
 # Clean Gene Names
 mim_res_temp <- mim_res_temp |>
-  tidylog::mutate(EntrezGeneSymbol = str_remove(EntrezGeneSymbol, "_2") |> 
+  tidylog::mutate(EntrezGeneSymbol = str_remove(EntrezGeneSymbol, "_2") |>
                     str_remove("_4"))
 
 # seq.19570.12 seq.8355.80 pass FDR for PFNA ~ features
 write_csv(mim_res_temp, 
           fs::path(dir_results, 
-                   "meet_in_middle_res_032024.csv")) 
+                   "meet_in_middle_res_020924.csv")) 
 ```
 

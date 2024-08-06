@@ -33,9 +33,10 @@ data_raw$monthstomic = (data_raw$daystomic/365)*12
 # data_raw$
 table1::table1(~sex + agebase + bmi + serum_creat + eGFR + 
                  est_creat_clear + hb_a1c + 
-                 dxtime + mic + monthstomic, 
+                 dxtime + monthstomic+tx|mic, 
                data = data_raw)
 ```
+
 ## Summary of PFAS
 ```{r summary of PFAS}
 pfas_summary <- original_data %>% 

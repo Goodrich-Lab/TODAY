@@ -213,13 +213,13 @@ ggsave(p,filename = here::here(dir_figure, "Fig2 Mediation V3.jpeg"),
 ```{r supplemental table}
 est <- read_csv(fs::path(dir_results, 
                           "meet_in_middle_res_020924.csv")) %>%
-  mutate(`PFNA β[95%CI]` = paste0(round(estimate_em, 2), " [", 
+  mutate(`PFNA β[95%CI]` = paste0(round(estimate_em, 2), " (", 
                                round(conf_low_em, 2), ",",
-                               round(conf_high_em, 2),"]"),
+                               round(conf_high_em, 2),")"),
          `PFNA P-Value` = round(p_value_em, 2),
-         `Albuminuria β[95%CI]` = paste0(round(estimate_mo, 2), " [", 
+         `Albuminuria β[95%CI]` = paste0(round(estimate_mo, 2), " (", 
                                           round(conf_low_mo, 2), ",",
-                                          round(conf_high_mo, 2),"]"),
+                                          round(conf_high_mo, 2),")"),
          `Albuminuria P-Value` = round(p.value_mo, 2))
   
 
@@ -244,15 +244,17 @@ med <- read.csv(fs::path(dir_results,'pairwise_mediation_result.csv')) %>%
 
 med_w <- med %>% 
   dplyr::select(EntrezGeneSymbol,PMed.avg, PMed.avg.lo, PMed.avg.hi,PMed.avg.pval) %>% 
-  mutate(`Proportion Mediated[95%CI]` = paste0(round(PMed.avg, 2), " [",
-                                round(PMed.avg.lo, 2), ",",
-                                round(PMed.avg.hi, 2),"]"),
+  # mutate(`Proportion Mediated[95%CI]` = paste0(round(PMed.avg, 2), " (",
+  #                               round(PMed.avg.lo, 2), ",",
+  #                               round(PMed.avg.hi, 2),")"),
+  #        `P-value` = PMed.avg.pval)
+  mutate(`Proportion Mediated` = paste0(round(PMed.avg, 2)),
          `P-value` = PMed.avg.pval)
 
 df <- est %>%  mutate(EntrezGeneSymbol = ifelse(EntrezGeneSymbol == "FGF8_3", "FGF8", EntrezGeneSymbol)) %>%
   dplyr::select(EntrezGeneSymbol, contains("PFNA"), contains("Albuminuria")) %>%
   tidylog::left_join(med_w %>% 
-                       dplyr::select(EntrezGeneSymbol, contains("[95%CI]")), by = "EntrezGeneSymbol") %>%
+                       dplyr::select(EntrezGeneSymbol, `Proportion Mediated`, "P-value"), by = "EntrezGeneSymbol") %>%
   dplyr::mutate(
     EntrezGeneSymbol = case_when(EntrezGeneSymbol == "FGF8_3" ~ "FGF8", 
                                  EntrezGeneSymbol == "HSPA1A_2" ~ "HSPA1A",

@@ -124,7 +124,9 @@ eo_comb <- list(pfas = ind_vars$exposure, event = dep_vars$event) %>%
   left_join(dep_vars, by = "event", relationship = "many-to-many")
 
 ## B. Set covars ---------
-covars2 <- c("sex_male", "agebase", "serum_creat", "dxtime")
+covars2 <- c("sex_male", "agebase", "serum_creat", "dxtime", "tx")
+covars3 <- c("sex_male", "agebase", "dxtime")
+covars4 <- c("sex_male", "agebase", "dxtime", "tx")
 # original covars:  "case1_control0", "sex_male", "agebase", "serum_creat"   
 colnames(data_scaled[,1:30])
 

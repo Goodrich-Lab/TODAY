@@ -61,9 +61,8 @@ omic_names_sig <- result_em |>
   dplyr::filter(p_value < 0.05)
 omic_names_sig <- unique(omic_names_sig$feature_name)
 
-# Select key columns, filter to significant omics only
-result_em_sig <- result_em %>% 
-  tidylog::filter(feature_name %in% omic_names_sig) |> 
+# Select/rename key columns
+result_em_fin <- result_em %>% 
   dplyr::select(omic_layer, var_name, feature_name, test_statistic,
                 estimate, conf_low, conf_high, p_value, adjusted_pval, sig_efnum, sig_fdr) |> 
   rename(estimate_em = estimate, 
@@ -72,7 +71,9 @@ result_em_sig <- result_em %>%
          p_value_em = p_value, 
          test_statistic_em = test_statistic) 
 
-length(unique(result_em_sig$feature_name))
+# filter to significant omics only
+result_em_sig <- result_em_fin %>% 
+ tidylog::filter(feature_name %in% omic_names_sig) 
 
 
 # 2) Mediator-outcome regressions ----------------
@@ -112,8 +113,8 @@ mo_res_models <- mo_res_models %>%
          adjusted_pval_mo = p.adjust(p.value, method = "fdr"),
          sig_fdr_mo = if_else(adjusted_pval_mo < 0.2, "Sig", "Not sig")) 
 
-result_mo_sig <- mo_res_models %>%
-  tidylog::filter(p.value < 0.05) %>%
+# Select/rename key vars
+result_mo_fin <- mo_res_models %>%
   dplyr::select(omic, estimate, p.value, 
                 estimate, conf.low, conf.high,
                 HR, exp_conf_high, exp_conf_low, adjusted_pval_mo, sig_fdr_mo, sig_efnum_mo) |> 
@@ -121,35 +122,57 @@ result_mo_sig <- mo_res_models %>%
          estimate_mo = estimate, 
          conf_low_mo = conf.low, 
          conf_high_mo = conf.high, 
-         p.value_mo = p.value,
+         p_value_mo = p.value,
          HR_mo = HR,
          exp_conf_low_mo = exp_conf_low,
          exp_conf_high_mo = exp_conf_high)
 
+# Filter sig only
+result_mo_sig <- mo_res_models |> 
+ tidylog::filter(p.value < 0.05)
+```
 
+
+
+```{r}
 # 3) Combine and analyze meet in middle --------------------
 # Combine em and mo
-mim_res_temp <- tidylog::inner_join(result_em_sig, 
-                                    result_mo_sig, 
-                                    by = "feature_name")
+mim_res_all <- tidylog::full_join(result_em_fin, result_mo_fin, by = "feature_name")
 
 # Add proteomics metadata
-mim_res_temp <- mim_res_temp |> 
+mim_res_all <- mim_res_all |> 
   tidylog::left_join(prot_metadata %>% 
                        dplyr::select(AptName, EntrezGeneSymbol),
                      by = c("feature_name"="AptName")) |> 
   tidylog::select(EntrezGeneSymbol, everything())
 
 # Clean Gene Names
-mim_res_temp <- mim_res_temp |>
-  tidylog::mutate(EntrezGeneSymbol = str_remove(EntrezGeneSymbol, "_2") |> 
-                    str_remove("_4"))
+mim_res_all <- mim_res_all |>
+  tidylog::mutate(EntrezGeneSymbol = str_remove_all(EntrezGeneSymbol, 
+                                      "_([0-9]|[1-9][0-9]|100)"))
+
+# Clean column names
+mim_res_all <- mim_res_all |> 
+  tidylog::rename(adjusted_pval_em = adjusted_pval, 
+                  sig_efnum_em = sig_efnum,
+                  sig_fdr_em = sig_fdr)
+
+# Save results
+write_csv(mim_res_all, 
+          fs::path(dir_results, 
+                   "meet_in_middle_res_all_072924.csv"))  
+
+# Filter to significant only
+mim_res_sig <- mim_res_all |> 
+  tidylog::filter(p_value_mo < 0.05, p_value_em < 0.05)
 
 # seq.19570.12 seq.8355.80 pass FDR for PFNA ~ features
-write_csv(mim_res_temp, 
+write_csv(mim_res_sig, 
           fs::path(dir_results, 
-                   "meet_in_middle_res_020924.csv")) 
+                   "meet_in_middle_res_sig_020924.csv")) 
 ```
+
+
 
 # Mediator-outcome regressions adjusted by PFNA
 * Mediators : sig mediators from meet in the middle
@@ -192,7 +215,7 @@ result_mo_sub <- mo_res_models %>%
          estimate_mo = estimate, 
          conf.low_mo = conf.low, 
          conf.high_mo = conf.high,
-         p.value_mo = p.value,
+         p_value_mo = p.value,
          HR_mo = HR,
          exp_conf_low_mo = exp_conf_low,
          exp_conf_high_mo = exp_conf_high)
@@ -207,7 +230,7 @@ mim_res <- tidylog::inner_join(result_em_sig,
 # examine meet in middle proteins
 mim_res1 <- mim_res |> 
   mutate(emxmo = estimate_em*estimate_mo, 
-         max_p = if_else(p_value_em < p.value_mo, p.value_mo, p_value_em))
+         max_p = if_else(p_value_em < p_value_mo, p_value_mo, p_value_em))
 
 ## Combine with proteomics metadata ------
 mim_res2 <- mim_res1 %>% 

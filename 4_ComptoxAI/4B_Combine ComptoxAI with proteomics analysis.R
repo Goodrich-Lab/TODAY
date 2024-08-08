@@ -4,7 +4,7 @@ source(here::here("!directories.r"))
 library(igraph)
 
 # 1. ComptoxAI graph generated in python ----
-g <- read.graph(fs::path(dir_results, 
+g <- read_graph(fs::path(dir_results, 
                          "ComptoxAI",
                          "PFAS_prot_dkd_expanded_020924.graphml"),
                 format = "graphml")
@@ -20,11 +20,11 @@ node_metadata <- data.frame(
   page_rank = page_rank(g)$vector,
   power_centrality = power_centrality(g),
   strength = strength(g),
-  subgraph_centrality = subgraph_centrality(g),
+  # subgraph_centrality = subgraph_centrality(g), #(only 4 unique values)
   betweenness = igraph::betweenness(g),
   degree = igraph::degree(g), 
   alpha_centrality = alpha_centrality(g), 
-  eccentricity = eccentricity(g),
+  # eccentricity = eccentricity(g), (only 4 unique values)
   coreness = coreness(g),
   closeness = closeness(g))
 plot(node_metadata$authority)
@@ -96,7 +96,7 @@ pm_quartile = gtools::quantcut(ppw_rank$pm, 4) |> as.numeric
     geom_hline(yintercept = 15, linetype = 3) + 
     geom_vline(xintercept = 15, linetype = 3) + 
     ggrepel::geom_label_repel(force = 1, box.padding = .5, min.segment.length = 0) +
-    geom_point(size = 4, shape = 21, color = "black", fill = "grey50") + #aes(size = pm),
+    geom_point(size = 4, shape = 21, color = "black", fill = "grey50") + # aes(size = pm),
     # geom_point(aes(size = pm), shape = 21, color = "black", fill = "grey50") + 
     # geom_point(aes(size = pm_quartile, fill = pm_quartile), shape = 21, color = "black") + 
     # scale_size(name = "Percent\nMediated\n(Rank)") + 

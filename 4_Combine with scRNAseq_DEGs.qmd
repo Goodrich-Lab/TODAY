@@ -53,14 +53,13 @@ scRNAseq_deg_sig_fdr05 <- scRNAseq_deg |>
 length(unique(scRNAseq_deg_sig_fdr05$gene))
 
 # Pivot wider for merge
-sc_fdr05_w_pvals <- scRNAseq_deg_sig_p05 |> 
+sc_fdr05_w_pvals <- scRNAseq_deg_sig_fdr05 |> 
   tidylog::select(gene, p_val, cell_type_time) |> 
   pivot_wider(id_cols = gene, 
               names_from = cell_type_time, 
               values_from = p_val) |> 
   mutate(sc_gene = "sig scRNAseq") |>
   janitor::clean_names()
-
 ```
 
 
@@ -131,7 +130,7 @@ mediation_res_all <- mediation_res_all |>
 
 
 table(mediation_res_all$sig_mim_p05)
-table(mediation_res_all2$sig_mim_p05)
+# table(mediation_res_all2$sig_mim_p05)
 
 
 # ## b. Calculate top 10 -----
@@ -158,10 +157,8 @@ full_data_sig_w <- mediation_res_all |>
   tidylog::full_join(sc_fdr05_w_pvals, 
                      by = c("EntrezGeneSymbol" = "gene")) |> 
   tidylog::select(-AptName, 
-                  -c(var_name:ADE.pval), 
-                  -c(test_statistic_em:conf_high_em), 
-                  -estimate_mo, 
-                  -c(conf_low_mo:exp_conf_low_mo))
+                  -c(var_name:ADE.pval))
+
 
 
 # Create variable that combines scRNAseq and proteomics results
@@ -201,6 +198,10 @@ table(full_data_sig_w$sig_overall)
 
 overlapping_genes <- full_data_sig_w |> 
   tidylog::filter(sig_overall_simplified == "Both") |> 
+  dplyr::select(EntrezGeneSymbol, sig_overall, everything())
+
+overlapping_sig <- full_data_sig_w |> 
+  tidylog::filter(sig_overall == "scRNAseq & TODAY MIM") |> 
   dplyr::select(EntrezGeneSymbol, sig_overall, everything())
 
 
@@ -291,8 +292,6 @@ upset_metadata = data.frame(
   dataset=c("TODAY", "TODAY", rep("scRNAseq", length(vars_to_plot)-2))
 )
 
-
-
 # Upset plot ----
 vars_to_plot <- upset_dat |> tidylog::select(-gene) |> colnames()
 
@@ -304,12 +303,216 @@ upset(data = upset_dat,
         colors=c(
           'TODAY'='red',
           'scRNAseq'='grey90')
-        
       ))
+```
 
+
+# V. Examine genes that are overlapping between scRNAseq and E-->M/MIM
+```{r}
+# Remove previous scRNAseq data and merge in the long format data              
+overlapping_sig_l <- overlapping_genes |> 
+  tidylog::select(-c(week1_cycling:sc_gene)) |> 
+  tidylog::left_join(scRNAseq_deg_sig_fdr05, 
+                     by = c("EntrezGeneSymbol" = "gene"))
+
+# Filter that are significant E->M or MIM in TODAY and sig in scRNAseq
+overlapping_sig_l <- overlapping_sig_l |> 
+  tidylog::filter(sig_overall_with_efnumtests %in% 
+                    c("scRNAseq & TODAY E->M p_05", 
+                      "scRNAseq & TODAY Sig p_05 in MIM")) 
+
+# Create summary vars  
+overlapping_sig_l <- overlapping_sig_l |>   
+  tidylog::mutate(
+    same_dir_em_and_scrna = if_else(estimate_em * avg_log2FC > 0, 
+                                    "Same Direction", 
+                                    "Different Direction"), 
+    em_dir = if_else(estimate_em > 0, 
+                     "Upregulated in TODAY", 
+                     "Downregulated in TODAY"))
+
+
+# Filter to significant cell types and summarize results
+# ol_sum <- overlapping_sig_l |> 
+#   tidylog::filter(p_val_adj < 0.05) |>
+#   dplyr::group_by(EntrezGeneSymbol) |> 
+#   tidylog::summarise_all(function(x){
+#     if_else(is.numeric(x), 
+#             unique(x) |> str_c(collapse = "; ")}) |> 
+#   ungroup()
+
+
+# Plot all variables 
+ggplot(overlapping_sig_l, 
+       aes(x = estimate_em, 
+           y = avg_log2FC, 
+           group = EntrezGeneSymbol)) +
+  geom_hline(yintercept = 0, linetype = 2, color = "grey20") +
+  geom_line() +  
+  geom_point(aes(shape = sig_overall_with_efnumtests, 
+                 color = cell_type) ) + 
+  facet_wrap(~ em_dir, scales = "free_x")
+
+length(unique(overlapping_sig_l$EntrezGeneSymbol))
+
+# Select only those in the same direction
+same_dir_sig <- overlapping_sig_l |> 
+  tidylog::filter(same_dir_em_and_scrna == "Same Direction")
+
+num_unique_overlapping_genes <- length(unique(same_dir_sig$EntrezGeneSymbol))
+
+# Plot variables in same direction 
+same_dir_sig |>
+  # group_by(EntrezGeneSymbol) |> 
+  # filter(avg_log2FC == max(avg_log2FC)) |>
+  filter(cell_type != "Cycling") |>
+  ggplot(aes(x = estimate_em, 
+             y = avg_log2FC)) +
+  # geom_hline(yintercept = 0, linetype = 2, color = "grey20") +
+  geom_line(aes(group = EntrezGeneSymbol), color = "grey80") +
+  # geom_smooth(method = "lm") +
+  geom_text(aes(label =EntrezGeneSymbol, color = cell_type), 
+            size = 3) + 
+  facet_wrap(~ week, scales = "free_x")
+```
+
+
+# Forest plot of overlapping significant genes
+```{r old delete me}
+# Prep data for forest plot ----
+## a) prep human data ----
+human_overlap <- overlapping_sig_l |> 
+  tidylog::select(EntrezGeneSymbol, sig_overall, same_dir_em_and_scrna,
+                  estimate_em, conf_low_em, conf_high_em, p_value_em,
+                  estimate_mo, conf_low_mo, conf_high_mo, p_value_mo)
+
+overlap_sig_human_l <- human_overlap |> 
+  group_by(EntrezGeneSymbol) |> slice_head() |> 
+  pivot_longer(cols = c(estimate_em, conf_low_em, conf_high_em, p_value_em, 
+                        estimate_mo, conf_low_mo, conf_high_mo, p_value_mo), 
+               names_to = c("variable_human", 
+                            "estimate_type_human"), 
+               names_pattern = "(.*)_(.*)", 
+               values_to = "value_human") 
+
+## b) prep in-vivo data ----
+cell_overlap <- overlapping_sig_l |> 
+  dplyr::mutate(estimate_type_cell = str_c(cell_type, "; ", week),) |>
+  dplyr::rename(p_value = p_val_adj, 
+                estimate = avg_log2FC) |>
+  tidylog::select(EntrezGeneSymbol, sig_overall, same_dir_em_and_scrna,
+                  estimate_type_cell, estimate, p_value) 
+
+overlap_sig_cell_l <- cell_overlap |> 
+  pivot_longer(cols = c("estimate", "p_value"), 
+               names_to = "variable_cell", values_to =  "value_cell")
+
+
+## c. Merge datasets and pivot longer on study ----
+overlap_combined <- tidylog::full_join(
+  overlap_sig_human_l, 
+  overlap_sig_cell_l, 
+  relationship = "many-to-many")
+
+## Pivot longer then wider
+overlap_combined_transformed <- overlap_combined |> 
+  pivot_longer(cols = c(value_human, value_cell), 
+               names_to = "variable", 
+               values_to = "value") |>
+  pivot_wider(names_from = "estimate_type_human", 
+              values_from = "value_human") |>
+  pivot_wider(names_from = "estimate_type_cell", 
+              values_from = "value_cell") |>
+  dplyr::mutate(study = str_remove_all(variable, "_.*")) |>
+  dplyr::select(-variable) |>
+  dplyr::mutate(study = factor(study, levels = c("estimate", "conf_low", 
+                                                 "conf_high", "p_value"))) 
+
+
+
+overlap_combined_long <- overlap_combined |> 
+  pivot_longer(
+    cols = c(starts_with("variable_"), starts_with("estimate_type_"), starts_with("value_")),
+    names_to = c(".value", "study"),
+    names_pattern = "(.*)_(.*)") |> 
+  ungroup()
+
+overlap_combined_long2 <- overlap_combined_long |>
+  pivot_wider(names_from = "variable", values_from = "value") 
+
+# Replace "human" and "cell" in the study column
+overlap_combined_long <- overlap_combined_long |> 
+  mutate(study = if_else(study == "human", "human", "cell"))
+
+
+
+xxx  <- overlap_combined_long |>
+  dplyr::summarise(n = dplyr::n(), 
+                   .by = c(EntrezGeneSymbol, sig_overall, 
+                           same_dir_em_and_scrna, study, 
+                           estimate_type, variable)) |>
+  dplyr::filter(n > 1L) 
 
 ```
 
+```{r new}
+# Prep data for forest plot ----
+## a) prep human data ----
+human_overlap <- overlapping_sig_l |> 
+  tidylog::select(EntrezGeneSymbol, sig_overall, same_dir_em_and_scrna,
+                  estimate_em, conf_low_em, conf_high_em, p_value_em,
+                  estimate_mo, conf_low_mo, conf_high_mo, p_value_mo)
+
+overlap_sig_human_l <- human_overlap |> 
+  group_by(EntrezGeneSymbol) |> slice_head() |> 
+  pivot_longer(cols = c(estimate_em, conf_low_em, conf_high_em, p_value_em, 
+                        estimate_mo, conf_low_mo, conf_high_mo, p_value_mo), 
+               names_to = c("variable", 
+                            "estimate_type"), 
+               names_pattern = "(.*)_(.*)", 
+               values_to = "value") |>
+  mutate(study = "human")
+
+## b) prep in-vivo data ----
+cell_overlap <- overlapping_sig_l |> 
+  dplyr::mutate(estimate_type = str_c(cell_type, "; ", week),) |>
+  dplyr::rename(p_value = p_val_adj, 
+                estimate = avg_log2FC) |>
+  tidylog::select(EntrezGeneSymbol, sig_overall, same_dir_em_and_scrna,
+                  estimate_type, estimate, p_value) 
+
+overlap_sig_cell_l <- cell_overlap |> 
+  pivot_longer(cols = c("estimate", "p_value"), 
+               names_to = "variable", values_to =  "value") |>
+  mutate(study = "cell")
+
+
+## c. Merge datasets and pivot longer on study ----
+overlap_combined <- bind_rows(overlap_sig_human_l, overlap_sig_cell_l)
+  
+
+## Pivot wider
+overlap_combined_w <- overlap_combined |> 
+  pivot_wider(names_from = "variable", values_from = "value") 
+
+overlap_combined_w <- overlap_combined_w 
+  
+
+ggplot(overlap_combined_w, 
+       aes(y = EntrezGeneSymbol, 
+           x = estimate, 
+           xmin = conf_low, 
+           xmax = conf_high, 
+           color = same_dir_em_and_scrna)) + 
+  geom_bar(stat = "identity") + 
+  geom_vline(xintercept = 0) + 
+  geom_errorbar() + 
+  facet_grid(same_dir_em_and_scrna~ study + estimate_type, scales = "free_y")
+
+length(unique(overlap_combined_w$EntrezGeneSymbol))
+
+
+```
 
 
 # Other analysis

@@ -42,26 +42,29 @@ node_metadata <- tibble(
 mean(node_metadata$degree_in)
 
 
-# 2 (new) Combine with network analysis data from python ------------
-# 33 wont match because they were trimmed from the network
+# 2. (new) Combine with network analysis data from python ------------
+# 13 wont match because they were trimmed from the network
 full_data <- node_metadata |> 
   tidylog::inner_join(graph_dat, by = "geneSymbol")
 
 
-graph_dat_l_on_centrality <- pivot_longer(full_data, 
-                            cols = c(eigen_centrality:closeness), 
-             values_to = "metric_value", names_to = "metric")
+graph_dat_l_on_centrality <- pivot_longer(
+  full_data, 
+  cols = c(eigen_centrality:closeness), 
+  values_to = "metric_value", names_to = "metric")
 
-graph_dat_l_on_neo <- pivot_longer(full_data, 
-                                          cols = c(eigen_centrality:closeness), 
-                                          values_to = "metric_value", names_to = "metric")
+
+graph_dat_l_on_neo <- pivot_longer(
+  full_data, 
+  cols = c(eigen_centrality:closeness), 
+  values_to = "metric_value", names_to = "metric")
 
 
 ## A. Plot ----
 graph_dat |> 
   tidylog::filter(sig_overall != "scRNAseq only" ) |>
   ggplot(aes(x = tsne_dim1, y = tsne_dim2, 
-                      color = as.factor(sig_overall))) + 
+             color = as.factor(sig_overall))) + 
   geom_point(size = 2, alpha = .5)
 
 # By specific significance
@@ -75,15 +78,16 @@ graph_dat |>
   geom_violin(alpha = .8) + 
   geom_boxplot(width = .1) + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
 graph_dat$sig_overall
 
-#
+# 
 graph_dat_l |> 
   filter(!is.na(sig_overall), 
          metric_value != 0) |> 
-ggplot(aes(x = sig_overall,
-           y = log2(metric_value+.001), 
-           fill = sig_overall_simplified)) +
+  ggplot(aes(x = sig_overall,
+             y = log2(metric_value+.001), 
+             fill = sig_overall_simplified)) +
   geom_jitter(width = .2, alpha = .5) + 
   # geom_hline(yintercept = 0, linetype = 2) + 
   geom_violin(alpha = .8) + 
@@ -91,10 +95,8 @@ ggplot(aes(x = sig_overall,
   facet_wrap(~metric, scales = "free_y") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
 
-  
-#################################################################################
 
-
+# 3. -----------------
 
 # 2. (OLD) Proteomics meet in middle results ----
 # Meet in middle results:
@@ -145,7 +147,7 @@ table(study_res$sig_overall, study_res$PMed>0)
 ## c. Filter to only positive percent mediated ---------------------------------
 ppw_pos <- ppw |> 
   tidylog::filter(PMed > 0) #|>
-mutate(ACME_abs = abs(ACME))
+# mutate(ACME_abs = abs(ACME))
 
 # Rank the data values
 ppw_rank <- ppw_pos |> 

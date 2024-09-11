@@ -26,16 +26,18 @@ scRNAseq_deg <- list.files(path = fs::path(dir_data, "scRNAseq DEGs"),
            mutate(file_name = tools::file_path_sans_ext(basename(.x))))
 
 # Rename first col
-scRNAseq_deg <- scRNAseq_deg |> 
+scRNAseq_deg2 <- scRNAseq_deg |> 
   dplyr::rename("gene" = 1) |> 
   dplyr::mutate(
     file_name = str_remove(file_name, ".de.markers"),
     cell_type_time = str_remove(file_name, "PFNAvsCTR_"),
     week = if_else(str_detect(file_name, "week1"), "week 1", "week 2"),
-    cell_type = str_split(file_name, "_", simplify = TRUE)[, 3])
+    
+    cell_type = str_remove(cell_type_time, "week1_") |> 
+      str_remove("week2_"))
 
-length(unique(scRNAseq_deg$gene))
-
+table(scRNAseq_deg2$cell_type_time)
+table(scRNAseq_deg2$cell_type)
 
 # Add variable to identify top DEGs
 scRNAseq_deg <- scRNAseq_deg |>
@@ -154,11 +156,8 @@ table(mediation_res_all$sig_mim_p05)
 # 1. Combine in wide format (better for comptoxai) ----
 full_data_sig_w <- mediation_res_all |> 
   tidylog::filter(sig_mim_p05 != "Neither significant") |>
-  tidylog::full_join(sc_fdr05_w_pvals, 
-                     by = c("EntrezGeneSymbol" = "gene")) |> 
-  tidylog::select(-AptName, 
-                  -c(var_name:ADE.pval))
-
+  tidylog::full_join(sc_fdr05_w_pvals, by = c("EntrezGeneSymbol" = "gene")) |> 
+  tidylog::select(-AptName, -c(var_name:ADE.pval))
 
 
 # Create variable that combines scRNAseq and proteomics results
@@ -206,12 +205,12 @@ overlapping_sig <- full_data_sig_w |>
 
 
 # Save data (change if needed to indicate which significance threshold is used)
-# write_csv(full_data_sig_w, 
-#           fs::path(dir_results,"Combined_proteomics_scRNAseq_sig_results_073024.csv"))
+# write_csv(full_data_sig_w,
+#           fs::path(dir_results,"Combined_proteomics_scRNAseq_sig_results_090924.csv"))
 
-# write_csv(full_data_sig_w, 
-#           fs::path(dir_results,
-#                    "Combined_proteomics_scRNAseq_sig_fdr_results_073024.csv"))
+write_csv(full_data_sig_w,
+          fs::path(dir_results,
+                   "Combined_proteomics_scRNAseq_sig_fdr_results_090924.csv"))
 
 table(is.na(full_data_sig_w$EntrezGeneSymbol))
 # 2. Combining in Long formate (best for upset plot) -----
@@ -240,7 +239,6 @@ scRNAseq_deg_l <- scRNAseq_deg |>
   tidylog::select(gene, p_val, p_val_adj, cell_type) |> 
   tidylog::rename(variable = cell_type) |> 
   tidylog::mutate(value = 1)
-
 
 # All measured genes
 measured_scrnaseq <- tibble(gene = unique(scRNAseq_deg$gene), 

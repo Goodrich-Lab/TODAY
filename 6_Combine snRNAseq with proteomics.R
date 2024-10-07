@@ -8,6 +8,7 @@ library(igraph)
 
 ## a. snRNAseq data -------
 # Read and combine all CSV files into a single data frame, adding a column for file names
+# Read and combine all CSV files into a single data frame, adding a column for file names
 scRNAseq_deg <- list.files(path = fs::path(dir_data, "scRNAseq DEGs"),
                            pattern = "*.csv", 
                            full.names = TRUE) %>%
@@ -22,7 +23,9 @@ scRNAseq_deg <- scRNAseq_deg |>
     file_name = str_remove(file_name, ".de.markers"),
     cell_type_time = str_remove(file_name, "PFNAvsCTR_"),
     week = if_else(str_detect(file_name, "week1"), "week 1", "week 2"),
-    cell_type = str_split(file_name, "_", simplify = TRUE)[, 3])
+    
+    cell_type = str_remove(cell_type_time, "week1_") |> 
+      str_remove("week2_"))
 
 length(unique(scRNAseq_deg$gene))
 
@@ -43,7 +46,7 @@ length(unique(scRNAseq_deg_sig$gene))
 # 35 protein graph
 g <- read_graph(fs::path(dir_results,
                          "ComptoxAI",
-                         "PFAS_prot_dkd_expanded_020924.graphml"),
+                         "PFAS_prot_in_vitro_sig_091224.graphml"),
                 format = "graphml")
 
 # g <- read_graph(fs::path(dir_results,
@@ -83,6 +86,7 @@ node_metadata <- node_metadata |>
 # 3. Proteomics meet in middle results ----
 # Meet in middle results:
 meet_in_middle_effects <- read.csv(fs::path(dir_results, "med_res_df_020924.csv"))
+
 # Results of all mediation analyses
 pfas_proteomics_res <- read.csv(
   fs::path(dir_results,
@@ -92,7 +96,7 @@ pfas_proteomics_res <- read.csv(
 pfas_proteomics_all <- prot_metadata |> 
   # tidylog::select(-c(category:ratio_salivary_gland)) |>
   tidylog::select(-c(SeqId:EntrezGeneID),
-                  -c(Organism:ratio_salivary_gland)) |>
+                  -c(Organism:maxrownum)) |>
   tidylog::left_join(pfas_proteomics_res) 
 
 # For now, since we didnt include an interaction, we can exclude the .T and 
@@ -136,22 +140,20 @@ pfas_proteomics_35 <- pfas_proteomics_35 |>
 
 # 4. Combine data from proteomics, comptoxai, and scRNAseq ----
 # proteomics and comptoxai
-ppw <- pfas_proteomics_35
-  #tidylog::right_join(
-  # node_metadata, 
-  # pfas_proteomics_35, 
-  # by = c("geneSymbol" = "EntrezGeneSymbol"))
+ppw <-  tidylog::right_join(
+  node_metadata,
+  pfas_proteomics_35,
+  by = c("geneSymbol" = "EntrezGeneSymbol"))
 
 # Combine with scRNAseq
-ppw2 <- tidylog::anti_join(
-  ppw, 
+ppw2 <- tidylog::left_join(ppw,
   scRNAseq_deg_sig,
-  by = c("EntrezGeneSymbol" = "gene"))
-  # by = c("geneSymbol" = "gene"))
-
-length(unique(ppw2$EntrezGeneSymbol))
+  # by = c("EntrezGeneSymbol" = "gene"))
+  by = c("geneSymbol" = "gene"))
 
 length(unique(ppw2$geneSymbol))
+
+
 # Examine the results
 # temp <- ppw2 |> 
 #   dplyr::select(geneSymbol, cell_type, week, avg_log2FC, 
@@ -175,11 +177,11 @@ ppw_summarized <- ppw2 |>
 # rm(ppw2)
 
 # Determine top 10% of mediation, comptoxai, and scRNAseq effects:
-# ppw_summarized <- ppw_summarized |> 
-#   mutate(
-#     top_comptox = ifelse(degree_out > quantile(degree_out, 0.66), 1, 0), 
-#     top_prop_med = ifelse(PMed > quantile(PMed, 0.66), 1, 0), 
-#     top_scrnaseq = ifelse(abs(avg_log2FC) > quantile(abs(avg_log2FC), 0.66), 1, 0))
+ppw_summarized <- ppw_summarized |>
+  mutate(
+    top_comptox = ifelse(degree_out > quantile(degree_out, 0.66), 1, 0),
+    top_prop_med = ifelse(PMed > quantile(PMed, 0.66), 1, 0),
+    top_scrnaseq = ifelse(abs(avg_log2FC) > quantile(abs(avg_log2FC), 0.66), 1, 0))
 
 # Filter top features across all approaches
 ppw_top_pct <- ppw_summarized |> 

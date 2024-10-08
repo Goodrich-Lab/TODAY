@@ -1,5 +1,5 @@
 est <- read_csv(fs::path(dir_results, 
-                          "meet_in_middle_res_020924.csv")) %>%
+                          "meet_in_middle_res_sig_020924.csv")) %>%
   mutate(`PFNA β[95%CI]` = paste(round(estimate_em, 2), "[", 
                                round(conf_low_em, 2), ",",
                                round(conf_high_em, 2),"]"),

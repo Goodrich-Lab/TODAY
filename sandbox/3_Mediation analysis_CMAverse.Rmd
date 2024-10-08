@@ -31,7 +31,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```{r,results='asis'}
 # Read in Meet in middle results, from 2_meet in the middle analysis
 # mim_res <- read_csv(fs::path(dir_results, "meet_in_middle_res_df_serum_creat_covar.csv")) 
-mim_res <- read_csv(fs::path(dir_results, "meet_in_middle_res_020924.csv")) 
+mim_res <- read_csv(fs::path(dir_results, "meet_in_middle_res_sig_020924.csv")) 
 
 # Run Mediation analysis
 med_res_df <- data.frame()

@@ -563,6 +563,7 @@ ppw_rank1 <- ppw_rank %>%
                            TRUE ~ "None"))
 table(ppw_rank1$top_comptox, ppw_rank1$top_prop_med, ppw_rank1$top_scrnaseq)
 table(ppw_rank1$Group)
+
 # Color = case_when(top_comptox + top_scrnaseq + top_prop_med == 3 ~ "#f54278",
 #                   top_comptox == 1 & top_scrnaseq == 1 ~ ""
 #                   top_30_hc == 1 ~ "#fc8c03",

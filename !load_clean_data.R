@@ -4,10 +4,19 @@
 ## A. Read in data --------
 original_data <- read_rds(fs::path(dir_data, "clean_data", "TODAY_complete_data_0417.RDS"))
 
+
+# load protein meta data
+meta_pro <- read_csv(fs::path(dir_data, "clean_data", "Proteome metadata.csv"))%>%
+  filter(Organism == "Human")
+
+
 # Set var names
 pfas_names <- original_data |> tidylog::select(contains("pfas_")) |> colnames()
 met_names <- original_data |> tidylog::select(contains("met_")) |> colnames()
-prot_names <- original_data |> tidylog::select(contains("seq")) |> colnames()
+prot_names <- original_data |> tidylog::select(all_of(meta_pro$AptName)) |> colnames()
+
+
+
 
 # Get informative metabolites/protein names
 omic_names <- c(prot_names, met_names)

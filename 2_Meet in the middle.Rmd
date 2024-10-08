@@ -147,6 +147,7 @@ mim_res_all <- mim_res_all |>
   tidylog::select(EntrezGeneSymbol, everything())
 
 # Clean Gene Names
+<<<<<<< HEAD
 mim_res_all <- mim_res_all |>
   tidylog::mutate(EntrezGeneSymbol = str_remove_all(EntrezGeneSymbol, 
                                       "_([0-9]|[1-9][0-9]|100)"))
@@ -166,12 +167,15 @@ write_csv(mim_res_all,
 mim_res_sig <- mim_res_all |> 
   tidylog::filter(p_value_mo < 0.05, p_value_em < 0.05)
 
+mim_res_temp <- mim_res_temp |>
+  tidylog::mutate(EntrezGeneSymbol = str_remove(EntrezGeneSymbol, "_2") |>
+                    str_remove("_4"))
+
 # seq.19570.12 seq.8355.80 pass FDR for PFNA ~ features
 write_csv(mim_res_sig, 
           fs::path(dir_results, 
                    "meet_in_middle_res_sig_020924.csv")) 
 ```
-
 
 
 # Mediator-outcome regressions adjusted by PFNA
@@ -241,4 +245,3 @@ mim_res2 <- mim_res1 %>%
 # mim_res2$emxmo
 
 ```
-

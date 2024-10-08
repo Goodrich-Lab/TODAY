@@ -71,7 +71,9 @@ eo_comb <- list(pfas = ind_vars$exposure, event = dep_vars$event) %>%
 
 # Get the formula for all models
 models <- eo_comb %>%
-  mutate(covar = str_c(covars, collapse = "+"),
+  mutate(
+         covar = str_c(covars[-3], collapse = "+"),
+          # covar = str_c(c(covars,"tx"), collapse = "+"),
          formula = str_c("Surv(", time , ",", event, ")", "~", pfas, "+", covar))
 
 ## C. Run the models -----
@@ -146,7 +148,7 @@ pfas_survival_models_result<- pfas_survival_models %>%
   dplyr::select(`PFAS Name`, `HR[95%CI]`,`P Value`)
 
 writexl::write_xlsx(pfas_survival_models_result, 
-                    fs::path(dir_results, "Supplemental Table 1.xlsx"))
+                    fs::path(dir_results, "Supplemental Table Sensitivity Analysis 2.xlsx"))
 ```
 
 # Coefficient Plot
@@ -207,39 +209,5 @@ pfas_survival_models |>
 ggsave(fig1a_pfas_albuminuria,
        filename = here::here(dir_figure, "Fig1 Survival Coef plot.jpeg"),
        width = 4, height = 3)
-```
-
-Simplified Figure
-```{r}
-
-(simplified_pfas_albuminuria <- pfas_survival_models %>%
-   dplyr::filter(event == "mic", 
-                 !(term %in% c("score_quintile", 
-                                 "score_quartile", 
-                                 "score_tertile", 
-                                 "score_median1")), 
-                 str_detect(pfas, "Score", negate = TRUE)) %>% 
-   mutate(pfas = fct_reorder(pfas, estimate)) %>%
-   ggplot(aes(y = pfas, x = HR)) +
-   geom_point(size = 1) +
-   geom_errorbar(aes(xmin = exp_conf_low,
-                     xmax = exp_conf_high),
-                 width = 0) +
-   geom_vline(xintercept = 1, linetype = 2) +
-   xlab("Diabetic Kidney Disease Risk") +
-   xlim(c(0, 10)) +
-   theme(strip.text = element_blank(),
-         axis.title.y = element_blank(),
-         panel.background = element_rect(fill="white"),
-         strip.background = element_rect(fill = "white"),
-         axis.line.x = element_line(color = "black"),
-         axis.line.y = element_line(color = "black"),
-         legend.position = "none"))
-
-
-ggsave(simplified_pfas_albuminuria,
-       filename = here::here(dir_figure, "Simplified Survival Coef plot.jpeg"),
-       width = 4, height = 2.75) 
-
 ```
 

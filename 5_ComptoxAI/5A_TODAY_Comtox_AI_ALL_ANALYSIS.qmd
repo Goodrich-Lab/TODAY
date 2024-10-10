@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "Run ComptoxAI on integrated scRNAseq and TODAY results"
 format: html
 ---
 ```{python}
@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 
 # Get the current directory
+# current_dir = pathlib.Path(__file__).parent.resolve()
 current_directory = Path.cwd()
 
 # Get folder names
@@ -125,11 +126,15 @@ for entry in data:
 
     # Add edge
     G.add_edge(start_node_id, end_node_id, relationship=rel_type, weight = 1)
+
+del data 
 ```
 
 
 ## 2.b Create figure
 ```{python}
+from collections import Counter
+
 # Color mapping
 color_map = {
     'PFAS': 'magenta',
@@ -158,6 +163,7 @@ print(len(G))
 
 # 3. Check graph for issues
 ```{python}
+#| label: Check self loops
 # Check graph after adding metadata
 isolated_nodes = list(nx.isolates(G))
 print(nx.number_of_isolates(G))
@@ -176,9 +182,8 @@ print(f"Nodes only connected to themselves: {isolated_self_loop_nodes}")
 ```
 
 ## 3.a Identify disconnected graphs
-
-
 ```{python}
+#| label: identify disconnected graphs
 # Generate weakly connected components
 weakly_connected_components = nx.weakly_connected_components(G)
 
@@ -219,18 +224,18 @@ df_sorted = df.sort_values(by='Type')
 G_trim = G.copy()
 G_trim.remove_nodes_from(nodes_not_in_largest)
 
-# print(len(G.nodes))
-# print(len(G_trim.nodes))
-# print(len(nodes_not_in_largest))
-# print(len(G_trim.nodes) == len(G.nodes)-len(nodes_not_in_largest))
+print(len(G.nodes))
+print(len(G_trim.nodes))
+print(len(nodes_not_in_largest))
+print(len(G_trim.nodes) == len(G.nodes)-len(nodes_not_in_largest))
+print(nodes_not_in_largest)
 ```
 
 # 4. Analyze communities and paths between PFNA and DKD
 
 ## 4.a. leidenalg
-
 ```{python}
-# leidenalg Communities 
+#| label: compute leidenalg Communities 
 import igraph as ig
 import leidenalg as la
 import cairocffi as cairo
@@ -239,56 +244,100 @@ import matplotlib.pyplot as plt
 source_node = "PFNA"
 target_node = "C0011881"
 
-# Find all simple paths from source_node to target_node
-all_paths = list(nx.shortest_path(G_trim, source=source_node, target=target_node))
-# print(all_paths)
-
 # convert to igraph
 h = ig.Graph.from_networkx(G_trim)
+# Create a new attribute 'name' from '_nx_name'
+h.vs['name'] = h.vs['_nx_name']
+
+# Create a dictionary to map gene symbols to sig_overall values
+gene_to_sig = dict(zip(gene_data['EntrezGeneSymbol'], gene_data['sig_overall']))
+
+# Initialize the cluster assignments for nodes based on 'sig_overall'
+initial_clusters = []
+for vertex in h.vs:
+    gene_symbol = vertex['name']
+    if gene_symbol in gene_to_sig:
+        initial_clusters.append(gene_to_sig[gene_symbol])
+    elif gene_symbol == source_node:
+        initial_clusters.append(source_node)
+    elif gene_symbol == target_node:
+        initial_clusters.append(target_node)    
+    else:
+        initial_clusters.append("error")  # Assign -1 if no match is found
+
+# Convert the list of strings to a numeric list using pandas' factorize function
+import pandas as pd
+initial_clusters_num, _ = pd.factorize(pd.Series(initial_clusters))
+initial_clusters = initial_clusters_num.tolist()
+
+# Set the initial cluster assignment as a vertex attribute
+h.vs['initial_cluster'] = initial_clusters
+Counter(initial_clusters)
 
 # Identify cluster partitions
-partition = la.find_partition(h, la.ModularityVertexPartition)
+partition = la.find_partition(graph=h, partition_type=la.ModularityVertexPartition, initial_membership=initial_clusters, n_iterations=-1, seed = 3787)
 print(len(partition))
-# optimiser = la.Optimiser()
-# # Optimize partitions
-# diff = optimiser.optimise_partition(partition, n_iterations=500)
-# print(len(partition))
+# Optimize partitions
+optimiser = la.Optimiser()
+diff = optimiser.optimise_partition(partition, n_iterations=1000)
+print(len(partition))
+print(diff)
 
-# print(diff)
+#| label: Get leidenalg community assignments
+leidenalg_community = partition.membership
+# Create a concatenated variable that combines groups 9 and above
+leidenalg_community_small = [i if i < 9 else 9 for i in communities1]
+leidenalg_community_min = [i if i < 3 else 3 for i in communities1]
+
+source_vertex = h.vs.find(name=source_node)
+target_vertex = h.vs.find(name=target_node)
+source_cluster = partition.membership[source_vertex.index]
+target_cluster = partition.membership[target_vertex.index]
+source_cluster_size = Counter(leidenalg_community)[source_cluster]
+target_cluster_size = Counter(leidenalg_community)[target_cluster]
+print(f'PFNA Cluster: {source_cluster}, cluster size: {source_cluster_size}')
+print(f'DKD Cluster: {target_cluster}, cluster size:  {target_cluster_size}')
+
+#| label: Get leidenalg community assignments
+leidenalg_community = partition.membership
+# Create a concatenated variable that combines groups 3 and above
+leidenalg_community_min = [i if i < 3 else 3 for i in leidenalg_community]
 ```
 
 
 ```{python}
-# Get leidenalg community assignments
-communities1 = partition.membership
-# Create a concatenated variable that combines groups 9 and above
-communities2 = [i if i < 9 else 9 for i in communities1]
-
 # # Create a mapping from igraph vertices to NetworkX nodes
 # Assuming nodes in G_trim are labeled from 0 to n-1
-mapping = {v.index: node for v, node in zip(h.vs, G_trim.nodes)}
+# mapping = {v.index: node for v, node in zip(h.vs, G_trim.nodes)}
 
-# Add community1 information to NetworkX graph
-for idx, community in enumerate(communities1):
-    nx_node = mapping[idx]
-    G_trim.nodes[nx_node]['community1'] = community
+# # # Add leidenalg_community information to NetworkX graph
+# # for idx, community in enumerate(leidenalg_community):
+# #     nx_node = mapping[idx]
+# #     G_trim.nodes[nx_node]['leidenalg_community'] = leidenalg_community
 
+# # # Add leidenalg_community_red information to NetworkX graph
+# # for idx, community in enumerate(leidenalg_community_min):
+# #     nx_node = mapping[idx]
+# #     G_trim.nodes[nx_node]['leidenalg_community_min'] = leidenalg_community_min
 
-# Add community2 information to NetworkX graph
-for idx, community in enumerate(communities2):
-    nx_node = mapping[idx]
-    G_trim.nodes[nx_node]['community2'] = community
-
-# Now G_trim has the community information
-# Example: Print node and its community
-# for node in G_trim.nodes(data=True):
-#     print(node)
+# # # Now G_trim has the community information
+# # # Example: Print node and its community
+# # # for node in G_trim.nodes(data=True):
+# # #     print(node)
 ```
 
-## 4.b. pygenstability (takes a long time and detects way too many communities)
 
-
+# 4.b. Find all simple paths from source_node to target_node
 ```{python}
+# Find all simple paths from source_node to target_node
+all_paths = list(nx.shortest_path(G_trim, source=source_node, target=target_node))
+print(all_paths)
+```
+
+## 4.c. pygenstability (not run)
+takes a long time and detects way too many communities
+```{python}
+#| label: pygenstability (NOT RUN)
 # import pygenstability as pgs
 # import scipy.sparse as sp
 # import pygenstability as pgs
@@ -319,39 +368,39 @@ for idx, community in enumerate(communities2):
 # print(f"Length of node_color array: {len(results['community_id'])}")
 ```
 
-## 4.c. Infomap
-
+## 4.d. Infomap (not used)
 ```{python}
-# # Write pajek to test on https://www.mapequation.org/infomap/#Input
-# # Create a copy of the graph without node attributes
-# G_trim_no_attrs = nx.Graph()
+#| label: Infomap 
+# # # Write pajek to test on https://www.mapequation.org/infomap/#Input
+# # # Create a copy of the graph without node attributes
+# # G_trim_no_attrs = nx.Graph()
 
-# # Add nodes and edges to the new graph
-# G_trim_no_attrs.add_nodes_from(G_trim.nodes())
-# G_trim_no_attrs.add_edges_from(G_trim.edges())
+# # # Add nodes and edges to the new graph
+# # G_trim_no_attrs.add_nodes_from(G_trim.nodes())
+# # G_trim_no_attrs.add_edges_from(G_trim.edges())
 
-# # Write the new graph to a Pajek file
-# nx.write_pajek(G_trim_no_attrs, "test_pajek_out.net")
-from infomap import Infomap
+# # # Write the new graph to a Pajek file
+# # nx.write_pajek(G_trim_no_attrs, "test_pajek_out.net")
+# from infomap import Infomap
 
-# Create a mapping from original node labels to integers
-mapping = {node: i for i, node in enumerate(G_trim.nodes())}
-reverse_mapping = {i: node for node, i in mapping.items()}
+# # Create a mapping from original node labels to integers
+# mapping = {node: i for i, node in enumerate(G_trim.nodes())}
+# reverse_mapping = {i: node for node, i in mapping.items()}
 
-# Relabel the graph using the integer mapping
-G_trim_int = nx.relabel_nodes(G_trim, mapping)
+# # Relabel the graph using the integer mapping
+# G_trim_int = nx.relabel_nodes(G_trim, mapping)
 
-# Initialize 2 level Infomap
-infomap = Infomap("--two-level --directed --flow-model directed -v --ftree")
+# # Initialize 2 level Infomap
+# infomap = Infomap("--two-level --directed --flow-model directed -v --ftree")
 
-# Initialize multi-level Infomap
-# infomap = Infomap("--directed --flow-model directed -v ")
+# # Initialize multi-level Infomap
+# # infomap = Infomap("--directed --flow-model directed -v ")
 
-# Add graph to Infomap
-infomap.add_networkx_graph(G_trim)
+# # Add graph to Infomap
+# infomap.add_networkx_graph(G_trim)
 
-# Run Infomap algorithm
-infomap.run()
+# # Run Infomap algorithm
+# infomap.run()
 
 # Extract top-level map
 # network_flow = infomap.flow_network()
@@ -375,7 +424,6 @@ infomap.run()
 #         else:
 #             G_top_level.add_edge(source_module, target_module, weight=flow)
 
-
 # # infomap.write_flow_tree("test")
 # # temp = nx.read_edgelist("test.csv")
 # # len(temp.nodes())
@@ -397,7 +445,6 @@ infomap.run()
 # #     print(nodes) 
 
 # print(infomap.get_nodes)
-
 
 # # Create a new graph for the top-level map
 # G_top_level = nx.DiGraph()
@@ -447,8 +494,8 @@ infomap.run()
 
 ```
 
-
 ```{python}
+#| label: Flow analysis (NOT RUN) 
 # DIDNT WORK BECAUSE THERE IS NO VARIABILITY IN THE CAPACITY
 # from networkx.algorithms.flow import maximum_flow
 
@@ -493,10 +540,12 @@ infomap.run()
 #     print(f"Node: {node}, Impact: {impact}")
 ```
 
-# 5. Node2vec analysis
-## 5.a. Node2vec (undirected graphs)
 
+# 5. Node2vec analysis
+## 5.a. Node2vec 
+One Note: Node2vec is for undirected graphs
 ```{python}
+#| label: Node2vec
 # Takes ~1 minute
 from node2vec import Node2Vec
 from sklearn.manifold import TSNE
@@ -514,6 +563,7 @@ node_embeddings = [embeddings[node] for node in node_ids]
 ## 5.b. TSNE/UMAP on node2vec results
 
 ```{python}
+#| label: TSNE on node2vec
 # Run time ~ 10 seconds
 # Perform t-SNE to reduce dimensionality to 2D for visualization
 node_embeddings = np.array(node_embeddings)
@@ -521,12 +571,13 @@ node_embeddings = np.array(node_embeddings)
 tsne = TSNE(n_components=2, random_state=42)
 tsne_embeddings_2d = tsne.fit_transform(node_embeddings)
 
-# Note- JG tried umap, but it didn't look good
+# Note- Also tried umap, but it didn't look good
 ```
 
 ## 5.c. Cluster TSNE results
 
 ```{python}
+#| label: Cluster TSNE
 # Run time ~ 20 seconds
 from sklearn.cluster import KMeans, DBSCAN, HDBSCAN, AgglomerativeClustering, Birch
 from sklearn.mixture import GaussianMixture
@@ -556,7 +607,6 @@ birch_clusters = birch.fit_predict(node_embeddings)
 gmm = GaussianMixture(n_components=3, random_state=42)
 gmm_clusters = gmm.fit_predict(node_embeddings)
 
-
 print('K-means: ' + str(Counter(kmeans_clusters)))
 print('dbscan: '  + str(Counter(dbscan_clusters)))
 print('hdbscan: ' + str(Counter(hdbscan_clusters)))
@@ -566,7 +616,9 @@ print('GaussianMixture: ' + str(Counter(gmm_clusters)))
 ```
 
 
+## 5.d. Create Dataframe of results
 ```{python}
+#| label: Create DF of cluster results
 # Create a DataFrame linking node names with their 2D embeddings
 df_embeddings = pd.DataFrame(tsne_embeddings_2d, columns=['tsne_dim1', 'tsne_dim2'])
 # umap_embeddings = pd.DataFrame(umap_embeddings_2d, columns=['umap_dim1', 'umap_dim2'])
@@ -577,19 +629,21 @@ df_embeddings['gene'] = node_ids
 df_embeddings = df_embeddings[['gene', 'tsne_dim1', 'tsne_dim2']] # , 'umap_dim1', 'umap_dim2'
 
 # Merge with clusters 
-df_embeddings['kmeans_clusters']        = kmeans_clusters
-df_embeddings['dbscan_clusters']        = dbscan_clusters
-df_embeddings['hdbscan_clusters']       = hdbscan_clusters
-df_embeddings['agglomerative_clusters'] = agglomerative_clusters
-df_embeddings['birch']                  = birch_clusters
-df_embeddings['gmm_clusters']           = gmm_clusters
+df_embeddings['kmeans_clusters']            = kmeans_clusters
+df_embeddings['dbscan_clusters']            = dbscan_clusters
+df_embeddings['hdbscan_clusters']           = hdbscan_clusters
+df_embeddings['agglomerative_clusters']     = agglomerative_clusters
+df_embeddings['birch']                      = birch_clusters
+df_embeddings['gmm_clusters']               = gmm_clusters
+df_embeddings['leidenalg_community']        = leidenalg_community
+df_embeddings['leidenalg_community_min']    = leidenalg_community_min
+
 
 # Before merge: record the number of rows in each dataframe
 rows_before = {'df_embeddings': len(df_embeddings), 'gene_data': len(gene_data)}
 
 # Merging with gene_data metadata, by 'gene' and 'EntrezGeneSymbol' columns
 df_merged = pd.merge(df_embeddings, gene_data, how='left', left_on='gene', right_on='EntrezGeneSymbol')
-
 
 # After merge: record the number of rows in the merged dataframe
 rows_after = len(df_merged)
@@ -609,6 +663,7 @@ df_merged.to_csv(dir_res / 'network_graph_analysis.csv', index=False)
 ## 5.c. Plot TSNE Results
 
 ```{python}
+#| label:  plot
 # Assign numeric codes to categories for coloring
 categories      = pd.Categorical(df_merged['sig_overall'])
 category_colors = pd.Categorical(df_merged['sig_overall']).codes
@@ -620,11 +675,13 @@ cluster_columns = [
     'hdbscan_clusters', 
     'agglomerative_clusters', 
     'birch', 
-    'gmm_clusters'
+    'gmm_clusters', 
+    'leidenalg_community',
+    'leidenalg_community_min'
 ]
 
 # Set up the figure and axes for the subplots
-fig, axes = plt.subplots(1, 6, figsize=(24, 4), sharex=True, sharey=True)
+fig, axes = plt.subplots(1, 8, figsize=(24, 4), sharex=True, sharey=True)
 
 # Iterate over the cluster columns and axes to create scatter plots
 for ax, column in zip(axes, cluster_columns):
@@ -641,35 +698,25 @@ plt.tight_layout()
 plt.show()
 ```
 
-
+Get Cross tabs of the results
 ```{python}
-cluster_columns = [
-    'kmeans_clusters', 
-    'dbscan_clusters', 
-    'hdbscan_clusters', 
-    'agglomerative_clusters', 
-    'birch', 
-    'gmm_clusters'
-]
-
-# Cross tabs
-cross_table = pd.crosstab(df_merged['sig_overall'], df_merged['birch'])
+#| label:  Cross tabs
+cross_table = pd.crosstab(df_merged['sig_overall'], df_merged['leidenalg_community_min'])
 # Convert counts to percentages
 # cross_table_percent = cross_table.div(cross_table.sum(axis=1), axis=0) * 100
-
 cross_table
 ```
 
 
 # 6. Save Graph
-
 ```{python}
+#| label:  save graph
 # Merge G_trim and df_merged 
 temp_df = df_merged.copy()
 G_fin = G_trim.copy()
 
 # Set the 'gene' column as the index for easy lookup
-df_merged_fin = temp_df.loc[:, 'tsne_dim1':'gmm_clusters']
+df_merged_fin = temp_df.loc[:, 'tsne_dim1':'leidenalg_community_min']
 df_merged_fin['gene'] = temp_df['EntrezGeneSymbol']
 # df_merged_fin['gene'] = temp_df['gene']
 df_merged_fin.set_index('gene', inplace=True)
@@ -680,13 +727,13 @@ for node in G_fin.nodes():
         for attr in df_merged.columns:
             G_trim.nodes[node][attr] = df_merged.loc[node, attr]
 
-# Example: Print node and its attributes
+# # Example: Print node and its attributes
 # for node in G_fin.nodes(data=True):
 #     print(node)
 
 # # Save file
 # file_path = dir_res / 'ComptoxAI' / 'PFAS_prot_in_vitro_sig_fdr_trimmed_073024.graphml'
-file_path = dir_res / 'ComptoxAI' / 'PFAS_prot_in_vitro_sig_091224.graphml'
+file_path = dir_res / 'ComptoxAI' / 'PFAS_prot_in_vitro_sig_100924.graphml'
 
 # Write the graph to a GraphML file
 nx.write_graphml(G_fin, file_path)
@@ -694,127 +741,6 @@ print(f"Network saved to {file_path}")
 ```
 
 
-```{python}
-# Assign numeric codes to categories for coloring
-categories      = pd.Categorical(df_merged['sig_overall'])
-category_colors = pd.Categorical(df_merged['sig_overall']).codes
-
-# List of cluster columns to plot
-cluster_columns = [
-    'kmeans_clusters', 
-    'dbscan_clusters', 
-    'hdbscan_clusters', 
-    'agglomerative_clusters', 
-    'birch', 
-    'gmm_clusters'
-]
-
-
-# Set up the figure and axes for the subplots
-fig, axes = plt.subplots(1, 6, figsize=(24, 4), sharex=True, sharey=True)
-
-# Iterate over the cluster columns and axes to create scatter plots
-for ax, column in zip(axes, cluster_columns):
-    scatter = ax.scatter(df_merged['tsne_dim1'], df_merged['tsne_dim2'], c=df_merged[column], cmap='viridis', alpha=0.6, s=10)
-    ax.set_title(column)
-    ax.set_xlabel('t-SNE Dimension 1')
-    ax.set_ylabel('t-SNE Dimension 2')
-
-# Add a color bar to the right of the plots
-# cbar = fig.colorbar(scatter, ax=axes, orientation='vertical', fraction=0.02, pad=0.04)
-# cbar.set_label('Cluster Value')
-
-plt.tight_layout()
-plt.show()
-```
-
-
-# 6. GraphSAGE model
-```{python}
-# The graph needs to have the same attributes for this algorithm
-def get_all_attributes(G_trim):
-    node_attributes = set()
-    edge_attributes = set()
-
-    # Collect node attributes
-    for node, attr in G_trim.nodes(data=True):
-        node_attributes.update(attr.keys())
-
-    # Collect edge attributes
-    for u, v, attr in G_trim.edges(data=True):
-        edge_attributes.update(attr.keys())
-
-    return node_attributes, edge_attributes
-
-# Get unique attributes
-node_attrs, edge_attrs = get_all_attributes(G)
-print(f"Unique node attributes: {node_attrs}")
-print(f"Unique edge attributes: {edge_attrs}")
-
-# Desired attributes to keep
-desired_attributes = {'commonName', 'type', 'typeOfGene'}
-
-# Make copy of data
-G_reduced = G_trim.copy()
-
-# Function to filter node attributes
-def filter_node_attributes(G_reduced, desired_attributes):
-    for node in G_reduced.nodes:
-        current_attributes = G_reduced.nodes[node]
-        filtered_attributes = {k: v for k, v in current_attributes.items() if k in desired_attributes}
-        G_reduced.nodes[node].clear()
-        G_reduced.nodes[node].update(filtered_attributes)
-
-# # Apply the function to filter node attributes
-filter_node_attributes(G_reduced, desired_attributes)
-
-# Get unique attributes
-node_attrs, edge_attrs = get_all_attributes(G_reduced)
-print(f"Filtered unique node attributes: {node_attrs}")
-print(f"Filtered unique edge attributes: {edge_attrs}")
-
-# Set values for nodes
-G_reduced.nodes['C0011881']['typeOfGene'] = 'disease' 
-G_reduced.nodes['PFNA']['typeOfGene'] = 'Chemical'  
-
-# Check which nodes are missing the "typeOfGene" attribute
-missing_typeOfGene_nodes = [node for node, attr in G_reduced.nodes(data=True) if 'typeOfGene' not in attr]
-print(f"Number of missing typeOfGene: {len(missing_typeOfGene_nodes)}")
-
-# Check which nodes are missing the "typeOfGene" attribute
-missing_typeOfGene_nodes = [node for node, attr in G_reduced.nodes(data=True) if 'type' not in attr]
-print(f"Number of missing type: {len(missing_typeOfGene_nodes)}")
-```
-
-
-```{python}
-import torch
-import torch.nn.functional as F
-from torch_geometric.nn import SAGEConv
-from torch_geometric.data import Data
-
-# Example graph data (this should be replaced with your actual graph data)
-# Assume G is a networkx directed graph with node features and labels
-
-# Convert NetworkX graph to PyTorch Geometric Data
-from torch_geometric.utils import from_networkx
-
-# Create PyTorch Geometric data from NetworkX graph
-data = from_networkx(G_reduced)
-
-# Ensure that data.x (node features) and data.y (labels) are present
-# Here, we assume each node has a feature vector and a label
-
-# Example of adding random node features and labels for demonstration
-import numpy as np
-num_nodes = data.num_nodes
-num_features = 16  # Example feature size
-num_classes = 3    # Example number of classes
-
-data.x = torch.tensor(np.random.randn(num_nodes, num_features), dtype=torch.float)
-data.y = torch.tensor(np.random.randint(0, num_classes, num_nodes), dtype=torch.long)
-
-```
 
 # OLD CODE NOT RUN
 
@@ -944,4 +870,144 @@ data.y = torch.tensor(np.random.randint(0, num_classes, num_nodes), dtype=torch.
 #         # If the edge doesn't exist, add it with a different relationship and weight
 #         G.add_edge(exposure, sc_gene, relationship='Organoid association', weight=1)
 #         print(f"Added new edge {idx}: exposure={exposure}, sc_gene={sc_gene}, relationship='Organoid association', weight=1")
+```
+
+## GraphSAGE model (not relevant to this analysis)
+```{python}
+#| label: GraphSAGE- NOT RUN
+# # The graph needs to have the same attributes for this algorithm
+# def get_all_attributes(G_trim):
+#     node_attributes = set()
+#     edge_attributes = set()
+
+#     # Collect node attributes
+#     for node, attr in G_trim.nodes(data=True):
+#         node_attributes.update(attr.keys())
+
+#     # Collect edge attributes
+#     for u, v, attr in G_trim.edges(data=True):
+#         edge_attributes.update(attr.keys())
+
+#     return node_attributes, edge_attributes
+
+# # Get unique attributes
+# node_attrs, edge_attrs = get_all_attributes(G)
+# print(f"Unique node attributes: {node_attrs}")
+# print(f"Unique edge attributes: {edge_attrs}")
+
+# # Desired attributes to keep
+# desired_attributes = {'commonName', 'type', 'typeOfGene'}
+
+# # Make copy of data
+# G_reduced = G_trim.copy()
+
+# # Function to filter node attributes
+# def filter_node_attributes(G_reduced, desired_attributes):
+#     for node in G_reduced.nodes:
+#         current_attributes = G_reduced.nodes[node]
+#         filtered_attributes = {k: v for k, v in current_attributes.items() if k in desired_attributes}
+#         G_reduced.nodes[node].clear()
+#         G_reduced.nodes[node].update(filtered_attributes)
+
+# # # Apply the function to filter node attributes
+# filter_node_attributes(G_reduced, desired_attributes)
+
+# # Get unique attributes
+# node_attrs, edge_attrs = get_all_attributes(G_reduced)
+# print(f"Filtered unique node attributes: {node_attrs}")
+# print(f"Filtered unique edge attributes: {edge_attrs}")
+
+# # Set values for nodes
+# G_reduced.nodes['C0011881']['typeOfGene'] = 'disease' 
+# G_reduced.nodes['PFNA']['typeOfGene'] = 'Chemical'  
+
+# # Check which nodes are missing the "typeOfGene" attribute
+# missing_typeOfGene_nodes = [node for node, attr in G_reduced.nodes(data=True) if 'typeOfGene' not in attr]
+# print(f"Number of missing typeOfGene: {len(missing_typeOfGene_nodes)}")
+
+# # Check which nodes are missing the "typeOfGene" attribute
+# missing_typeOfGene_nodes = [node for node, attr in G_reduced.nodes(data=True) if 'type' not in attr]
+# print(f"Number of missing type: {len(missing_typeOfGene_nodes)}")
+```
+
+
+```{python}
+#| label: GraphSage fit- Not Run
+import torch
+# import torch.nn.functional as F
+# from torch_geometric.nn import SAGEConv
+# from torch_geometric.data import Data
+
+# # Example graph data (this should be replaced with your actual graph data)
+# # Assume G is a networkx directed graph with node features and labels
+
+# # Convert NetworkX graph to PyTorch Geometric Data
+# from torch_geometric.utils import from_networkx
+
+# # Create PyTorch Geometric data from NetworkX graph
+# data = from_networkx(G_reduced)
+
+# # Ensure that data has node features (x), labels (y), and edge index
+# if data.x is None or data.y is None:
+#     raise ValueError("The input graph does not contain node features and/or labels.")
+
+# # Defining a simple GraphSAGE Model
+# class GraphSAGE(torch.nn.Module):
+#     def __init__(self, in_channels, hidden_channels, out_channels):
+#         super(GraphSAGE, self).__init__()
+#         self.conv1 = SAGEConv(in_channels, hidden_channels)
+#         self.conv2 = SAGEConv(hidden_channels, out_channels)
+
+#     def forward(self, x, edge_index):
+#         # First layer
+#         x = self.conv1(x, edge_index)
+#         x = F.relu(x)  # Apply ReLU activation
+#         # Second layer
+#         x = self.conv2(x, edge_index)
+#         return F.log_softmax(x, dim=1)  # Apply log_softmax for classification
+
+# # Set the parameters for the model
+# in_channels = data.x.shape[1]
+# hidden_channels = 32
+# out_channels = len(torch.unique(data.y))  # Number of unique classes in the labels
+
+# # Instantiate the model
+# model = GraphSAGE(in_channels, hidden_channels, out_channels)
+
+# # Define optimizer
+# optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+
+# # Create masks for splitting data into training, validation, and test sets
+# data.train_mask = torch.rand(data.num_nodes) < 1  # Randomly assign 80% of nodes to training set
+# data.test_mask = ~data.train_mask  # The rest are used as a test set
+
+# # Define the training loop
+# def train():
+#     model.train()  # Set the model to training mode
+#     optimizer.zero_grad()  # Zero out the gradients from the previous step
+#     out = model(data.x, data.edge_index)  # Forward pass through the model
+#     loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask])  # Calculate the loss on training nodes
+#     loss.backward()  # Backward pass (compute gradients)
+#     optimizer.step()  # Update the model weights
+#     return loss
+
+# # Training loop
+# epochs = 200
+# for epoch in range(epochs):
+#     loss = train()
+#     if epoch % 10 == 0:
+#         print(f'Epoch {epoch}, Loss: {loss.item()}')
+
+# # Evaluating the model
+# def test():
+#     model.eval()  # Set the model to evaluation mode
+#     out = model(data.x, data.edge_index)  # Get model predictions
+#     pred = out.argmax(dim=1)  # Get predicted classes
+#     correct = (pred[data.test_mask] == data.y[data.test_mask]).sum()  # Count correct predictions
+#     acc = int(correct) / int(data.test_mask.sum())  # Calculate accuracy
+#     return acc
+
+# # Testing the model
+# accuracy = test()
+# print(f'Test Accuracy: {accuracy:.4f}')
 ```

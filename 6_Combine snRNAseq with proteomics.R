@@ -6,6 +6,7 @@ library(igraph)
 
 # 1. Read in data ----
 
+
 ## a. snRNAseq data -------
 # Read and combine all CSV files into a single data frame, adding a column for file names
 # Read and combine all CSV files into a single data frame, adding a column for file names
@@ -53,6 +54,8 @@ g <- read_graph(fs::path(dir_results,
 #                          "ComptoxAI",
 #                          "PFAS_prot_dkd_all_prot_032724.graphml"),
 #                 format = "graphml")
+
+graph_with_clusters <- read_csv(fs::path(dir_results, "network_graph_analysis.csv"))
 
 
 # Calculate graph data
